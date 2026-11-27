@@ -48,17 +48,24 @@ const DEFAULT_APP_CONFIG = {
   apiBaseUrl: '/api',
 } as const;
 
+function normalizeNonEmptyString(rawValue: unknown): string {
+  if (typeof rawValue !== 'string') {
+    return '';
+  }
+  return rawValue.trim();
+}
+
 function pickConfigValue(
   runtimeValue: string | undefined,
   buildValue: string | undefined,
   defaultValue: string,
 ): { value: string; source: ConfigValueSource } {
-  const normalizedRuntime = runtimeValue?.trim();
+  const normalizedRuntime = normalizeNonEmptyString(runtimeValue);
   if (normalizedRuntime) {
     return { value: normalizedRuntime, source: 'runtime' };
   }
 
-  const normalizedBuild = buildValue?.trim();
+  const normalizedBuild = normalizeNonEmptyString(buildValue);
   if (normalizedBuild) {
     return { value: normalizedBuild, source: 'build' };
   }

@@ -13,9 +13,9 @@ templates/spring-boot-jar/
 │   └── src/
 └── deploy/
     ├── docker/                # Docker 部署载体（quickstart / production / hardened）
-    ├── compose/               # Docker Compose 部署载体（规划占位，随对应工单交付）
-    ├── systemd/               # 宿主机直跑 systemd 部署载体（规划占位，随对应工单交付）
-    └── kubernetes/            # Kubernetes 部署载体（规划占位，随对应工单交付）
+    ├── compose/               # Docker Compose 部署载体（quickstart / production / hardened）
+    ├── systemd/               # 宿主机直跑 systemd 部署载体（quickstart / production / hardened）
+    └── kubernetes/            # Kubernetes 部署载体（quickstart / production / hardened）
 ```
 
 ## 参考应用契约（`app/`）
@@ -87,6 +87,6 @@ SERVER_PORT=8080 MANAGEMENT_SERVER_PORT=8081 java -jar templates/spring-boot-jar
 | 部署载体 | 载体目录 | 说明文档 | 交付状态 |
 | :--- | :--- | :--- | :--- |
 | **Docker** | `deploy/docker/` | [Docker 部署载体说明](./deploy/docker/README.md) | 已就绪（含 `quickstart` / `production` / `hardened`） |
-| **Docker Compose** | `deploy/compose/` | `deploy/compose/README.md` | 规划中（随对应工单合入） |
-| **宿主机直跑（`systemd`）** | `deploy/systemd/` | `deploy/systemd/README.md` | 规划中（随对应工单合入） |
-| **Kubernetes** | `deploy/kubernetes/` | `deploy/kubernetes/README.md` | 规划中（随对应工单合入） |
+| **Docker Compose** | `deploy/compose/` | [Docker Compose 部署载体说明](./deploy/compose/README.md) | 已就绪（含 `quickstart` / `production` / `hardened`） |
+| **宿主机直跑（`systemd`）** | `deploy/systemd/` | [宿主机直跑部署载体说明](./deploy/systemd/README.md) | 已就绪（含 `quickstart` / `production` / `hardened`） |
+| **Kubernetes** | `deploy/kubernetes/` | [Kubernetes 部署载体说明](./deploy/kubernetes/README.md) | 已就绪（含 `quickstart` / `production` / `hardened`） |

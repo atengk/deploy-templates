@@ -10,13 +10,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_ROOT="${DEFAULT_ROOT}"
 
+# shellcheck source=scripts/lib/common.sh
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib/common.sh"
+
 usage() {
   cat <<'EOF'
 用法：verify-repo.sh [--root <仓库根目录>]
 
 检查项：
   1. 面向 Linux 与文本受控文件无 CRLF（\r）行尾
-  2. 全仓 *.sh 脚本具备可执行权限（Git 索引 100755 与可执行位）
+  2. 全仓可执行 *.sh 脚本具备 100755 权限（scripts/lib/*.sh 函数库允许 100644）
   3. Markdown 文档无 file:///、本地盘符/家目录绝对路径且站内相对链接真实存在
   4. 全仓文本文件无明显明文凭据或私钥
   5. 全仓文本文件不含 CONTEXT.md 定义的 _Avoid_ 禁用词
@@ -31,14 +35,6 @@ cleanup() {
   rm -f "${TEXT_LIST_FILE:-}" "${MD_LIST_FILE:-}"
 }
 trap cleanup EXIT
-
-log_info() {
-  printf '[INFO] %s\n' "$*"
-}
-
-log_pass() {
-  printf '[PASS] %s\n' "$*"
-}
 
 log_fail() {
   printf '[FAIL] %s\n' "$*" >&2
@@ -162,7 +158,15 @@ check_sh_executable() {
     [[ -n "${line}" ]] || continue
     mode="${line%% *}"
     tracked_path="${line#*$'\t'}"
-    if [[ -f "${REPO_ROOT}/${tracked_path}" && "${mode}" != "100755" ]]; then
+    [[ -f "${REPO_ROOT}/${tracked_path}" ]] || continue
+    if [[ "${tracked_path}" == scripts/lib/*.sh ]]; then
+      if [[ "${mode}" != "100644" && "${mode}" != "100755" ]]; then
+        log_fail "Git 索引中函数库脚本权限异常（当前 ${mode}）：${tracked_path}"
+        bad=$((bad + 1))
+      fi
+      continue
+    fi
+    if [[ "${mode}" != "100755" ]]; then
       log_fail "Git 索引中脚本权限非 100755（当前 ${mode}）：${tracked_path}"
       bad=$((bad + 1))
     fi
@@ -174,6 +178,9 @@ check_sh_executable() {
     [[ -f "${abs}" ]] || continue
     sh_count=$((sh_count + 1))
 
+    if [[ "${rel}" == scripts/lib/*.sh ]]; then
+      continue
+    fi
     if [[ "${is_win}" -eq 0 && ! -x "${abs}" ]]; then
       log_fail "文件系统缺少可执行权限位：${rel}"
       bad=$((bad + 1))
@@ -185,17 +192,6 @@ check_sh_executable() {
   elif [[ "${bad}" -eq 0 ]]; then
     log_pass "脚本可执行权限检查通过（共 ${sh_count} 个 *.sh 文件）"
   fi
-}
-
-detect_python() {
-  local cand=""
-  for cand in python3 python; do
-    if command -v "${cand}" >/dev/null 2>&1 && "${cand}" -c "import sys" >/dev/null 2>&1; then
-      printf '%s\n' "${cand}"
-      return 0
-    fi
-  done
-  return 1
 }
 
 check_markdown_paths_and_links() {
@@ -301,8 +297,6 @@ PYEOF
 
 check_secrets() {
   local list_file="$1"
-  local pk_begin="-----BEGIN "
-  local pk_end="PRIVATE KEY-----"
   local hits=""
   local hit=""
   local bad=0
@@ -311,20 +305,11 @@ check_secrets() {
     return 0
   fi
 
-  hits="$(tr '\n' '\0' < "${list_file}" | xargs -0 grep -nE -e "${pk_begin}(RSA |EC |DSA |OPENSSH |PGP )?${pk_end}" || true)"
-  if [[ -n "${hits}" ]]; then
+  if ! hits="$(scan_secrets_in_list_file "${list_file}")"; then
     while IFS= read -r hit; do
-      [[ -n "${hit}" ]] && log_fail "疑似包含明文私钥：${hit#"${REPO_ROOT}/"}"
+      [[ -n "${hit}" ]] && log_fail "疑似包含明文私钥或第三方令牌：${hit//"${REPO_ROOT}/"/}"
     done <<< "${hits}"
-    bad=$((bad + 1))
-  fi
-
-  hits="$(tr '\n' '\0' < "${list_file}" | xargs -0 grep -nE -e '(ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|xox[baprs]-[0-9A-Za-z-]{10,})' || true)"
-  if [[ -n "${hits}" ]]; then
-    while IFS= read -r hit; do
-      [[ -n "${hit}" ]] && log_fail "疑似包含第三方平台密钥或访问令牌：${hit#"${REPO_ROOT}/"}"
-    done <<< "${hits}"
-    bad=$((bad + 1))
+    bad=1
   fi
 
   if [[ "${bad}" -eq 0 ]]; then
@@ -343,14 +328,21 @@ check_avoid_terms() {
     return 0
   fi
 
-  # 使用拼接方式组装禁用词正则，防止当前脚本文件命中自检
+  # 使用拼接方式组装与 CONTEXT.md 同步的禁用词正则，防止当前脚本文件命中自检
   avoid_regex="("
+  avoid_regex+="Demo ""项目|"
+  avoid_regex+="Demo""项目|"
+  avoid_regex+="业""务代码|"
+  avoid_regex+="脚""手架|"
+  avoid_regex+="运""行环境|"
+  avoid_regex+="部""署环境|"
   avoid_regex+="工""业级|"
   avoid_regex+="重""装级|"
   avoid_regex+="高""配版|"
   avoid_regex+="快速""使用级|"
   avoid_regex+="Demo""级|"
   avoid_regex+="Demo ""级|"
+  avoid_regex+="简""易版|"
   avoid_regex+="正""式级|"
   avoid_regex+="线""上版|"
   avoid_regex+="全家桶""编排|"
@@ -360,11 +352,15 @@ check_avoid_terms() {
   avoid_regex+="分环境""打包|"
   avoid_regex+="一环境""一镜像|"
   avoid_regex+="Overlay ""继承层|"
-  avoid_regex+="差量补丁""模板"
+  avoid_regex+="差量补丁""模板|"
+  avoid_regex+="自""动部署|"
+  avoid_regex+="日""常 CI|"
+  avoid_regex+="镜像""压缩包|"
+  avoid_regex+="临时""构建物"
   avoid_regex+=")"
 
   hits="$(
-    tr '\n' '\0' < "${list_file}" | xargs -0 grep -nE "${avoid_regex}" | grep -v '_Avoid_' || true
+    tr '\n' '\0' < "${list_file}" | xargs -0 grep -HnE "${avoid_regex}" | grep -v '_Avoid_' || true
   )"
 
   if [[ -n "${hits}" ]]; then

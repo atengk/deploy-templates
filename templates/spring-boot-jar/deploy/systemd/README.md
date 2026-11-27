@@ -11,6 +11,7 @@ templates/spring-boot-jar/deploy/systemd/
 │   ├── spring-boot-jar.service
 │   ├── app.env.example
 │   ├── deploy.sh
+│   ├── rollback.sh
 │   └── healthcheck.sh
 ├── production/                # 生产级独立副本
 │   ├── spring-boot-jar.service
@@ -35,7 +36,7 @@ templates/spring-boot-jar/deploy/systemd/
 | **适用场景** | 测试宿主机快速验证、功能演示 | 线上常规流量的无容器标准交付基线 | 严格安全审计、最小权限与攻击面收敛场景 |
 | **运行用户权限** | `systemd` 默认身份 | 专用低权系统用户 `springapp`（`nologin`） | 专用低权系统用户 `springapp`，且产物 `app.jar` 设为 `root:springapp` 只读 `0440` |
 | **目录与原子发布** | `/opt/spring-boot-jar/releases/<version>` + `current` 软链 | 同左，目录权限 `0750`、`app.jar` 权限 `0640` | 同左，目录权限 `0750`、`app.jar` 权限 `0440` |
-| **一键回滚能力** | 人工重发或手工切链 | 内置 `rollback.sh`（支持自动回退上一版本与指定版本） | 内置 `rollback.sh`（支持自动回退上一版本与指定版本） |
+| **一键回滚能力** | 内置 `rollback.sh`（支持自动回退上一版本与指定版本） | 内置 `rollback.sh`（支持自动回退上一版本与指定版本） | 内置 `rollback.sh`（支持自动回退上一版本与指定版本） |
 | **端口与访问隔离** | 单端口 `8080` 提供业务与 `/actuator/health` | 业务 `8080` 与管理端口 `8081` 拆分，配合 Nginx 屏蔽 `/actuator` | 默认绑定回环地址 `127.0.0.1:8080/8081`，强制经 Nginx 入口并屏蔽 `/actuator` |
 | **内存与资源限额** | JVM 基础堆参数 `-Xms128m -Xmx512m` | `MemoryMax=768M` + `-XX:MaxRAMPercentage=75.0` + `LimitNOFILE=65536` | 增加 `TasksMax=256` 与 `UMask=0027` 收紧进程与文件权限 |
 | **优雅停机治理** | 默认 `SIGTERM` + `SuccessExitStatus=143` | 显式 `KillSignal=SIGTERM` + `TimeoutStopSec=30`（覆盖 20s 宽限期） | 同 `production`，保障在途请求排空 |

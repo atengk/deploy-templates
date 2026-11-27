@@ -110,4 +110,43 @@ describe('resolveAppConfig', () => {
       apiBaseUrl: 'runtime',
     });
   });
+
+  it('运行时 APP_VERSION 为空字符串或空白时不覆盖构建期 VITE_APP_VERSION', () => {
+    for (const emptyVersion of ['', '   ', undefined]) {
+      window.__APP_CONFIG__ = {
+        APP_TITLE: '生产门户',
+        APP_VERSION: emptyVersion,
+        APP_ENV: 'production',
+        APP_API_BASE_URL: 'https://api.example.com',
+      };
+
+      const resolved = resolveAppConfig({
+        buildEnv: {
+          VITE_APP_VERSION: 'v1.4.2',
+        },
+      });
+
+      expect(resolved.version).toBe('v1.4.2');
+      expect(resolved.sources.version).toBe('build');
+    }
+  });
+
+  it('仅在运行时显式提供非空 APP_VERSION 时覆盖构建期版本，且对非字符串异常值安全回退', () => {
+    window.__APP_CONFIG__ = {
+      APP_VERSION: '  v1.4.2-patch1  ',
+      APP_TITLE: 123 as unknown as string,
+    };
+
+    const resolved = resolveAppConfig({
+      buildEnv: {
+        VITE_APP_TITLE: '构建期门户',
+        VITE_APP_VERSION: 'v1.4.2',
+      },
+    });
+
+    expect(resolved.version).toBe('v1.4.2-patch1');
+    expect(resolved.sources.version).toBe('runtime');
+    expect(resolved.title).toBe('构建期门户');
+    expect(resolved.sources.title).toBe('build');
+  });
 });

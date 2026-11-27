@@ -61,6 +61,6 @@ pnpm dev
 | 部署载体 | 仓库路径 | 当前状态 | 核心说明 |
 | :--- | :--- | :--- | :--- |
 | **Docker** | [`./deploy/docker/README.md`](./deploy/docker/README.md) | 已就绪 | 三级 `Dockerfile`、Nginx 配置与运行时配置注入入口脚本 |
-| **Docker Compose** | `deploy/compose/` | 规划中 | 单机复用同等级 Docker 构建定义并叠加只读/资源限额编排 |
-| **宿主机直跑（`systemd`）** | `deploy/systemd/` | 规划中 | 基于系统 `nginx.service` 的三级站点配置与原子软链发布回滚 |
-| **Kubernetes** | `deploy/kubernetes/` | 规划中 | 原生清单、ConfigMap 注入、`Ingress`（v1）与 Kustomize 聚合入口 |
+| **Docker Compose** | [`./deploy/compose/README.md`](./deploy/compose/README.md) | 已就绪 | 单机复用同等级 Docker 构建定义并叠加只读/资源限额编排 |
+| **宿主机直跑（`systemd`）** | [`./deploy/systemd/README.md`](./deploy/systemd/README.md) | 已就绪 | 基于系统 `nginx.service` 的三级站点配置与原子软链发布回滚 |
+| **Kubernetes** | [`./deploy/kubernetes/README.md`](./deploy/kubernetes/README.md) | 已就绪 | 原生清单、ConfigMap 注入、`Ingress`（v1）与 Kustomize 聚合入口 |

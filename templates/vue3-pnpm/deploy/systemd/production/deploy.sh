@@ -110,6 +110,10 @@ generate_runtime_config() {
   local tmp_file="${target_file}.tmp.$$"
 
   LC_ALL=C awk '
+  function trim(s) {
+    gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, "", s)
+    return s
+  }
   function escape_js(s,    i, n, c, out) {
     out = ""
     n = length(s)
@@ -134,7 +138,7 @@ generate_runtime_config() {
     count = 0
     for (i = 1; i <= 4; i++) {
       k = keys[i]
-      v = ENVIRON[k]
+      v = trim(ENVIRON[k])
       if (v != "") {
         count++
         entries[count] = sprintf("  %s: \"%s\"", k, escape_js(v))
@@ -234,8 +238,13 @@ if [ ! -f "${ARG_SOURCE}/index.html" ]; then
   exit 1
 fi
 
-# 若环境变量与 ENV_FILE 未显式指定 APP_VERSION，则自动注入当前发布版本号
-if [ -z "${APP_VERSION:-}" ]; then
+# 若环境变量与 ENV_FILE 未显式指定非空 APP_VERSION，则自动注入当前发布版本号（全空白视作未设置）
+app_version_trimmed="${APP_VERSION:-}"
+app_version_trimmed="${app_version_trimmed#"${app_version_trimmed%%[![:space:]]*}"}"
+app_version_trimmed="${app_version_trimmed%"${app_version_trimmed##*[![:space:]]}"}"
+if [ -n "$app_version_trimmed" ]; then
+  export APP_VERSION="$app_version_trimmed"
+else
   export APP_VERSION="$ARG_VERSION"
 fi
 export APP_TITLE="${APP_TITLE:-}"

@@ -9,6 +9,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# shellcheck source=scripts/lib/common.sh
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib/common.sh"
+
 TARGET_STACK="all"
 WORK_TMP=""
 
@@ -19,18 +23,6 @@ usage() {
 选项：
   --stack <栈名>    指定演练的技术栈（默认：all）
 EOF
-}
-
-log_info() {
-  printf '[INFO] %s\n' "$*"
-}
-
-log_pass() {
-  printf '[PASS] %s\n' "$*"
-}
-
-log_error() {
-  printf '[ERROR] %s\n' "$*" >&2
 }
 
 cleanup() {
@@ -317,24 +309,22 @@ verify_spring_boot_host_tier() {
     return 1
   fi
 
-  # 5. production / hardened 回滚全链路（自动回滚 + 指定版本回滚）
-  if [[ "${tier}" != "quickstart" ]]; then
-    local list_out=""
-    list_out="$(bash "${systemd_dir}/rollback.sh" --list)"
-    grep -Fq '* v1.1.0 (current)' <<< "${list_out}"
-    grep -Fq 'v1.0.0' <<< "${list_out}"
+  # 5. 三级回滚全链路（自动回滚 + 指定版本回滚）
+  local list_out=""
+  list_out="$(bash "${systemd_dir}/rollback.sh" --list)"
+  grep -Fq '* v1.1.0 (current)' <<< "${list_out}"
+  grep -Fq 'v1.0.0' <<< "${list_out}"
 
-    bash "${systemd_dir}/rollback.sh" >/dev/null
-    assert_symlink_version "${deploy_root}/current" "v1.0.0"
-    cmp -s "${deploy_root}/current/app.jar" "${jar_v1}"
+  bash "${systemd_dir}/rollback.sh" >/dev/null
+  assert_symlink_version "${deploy_root}/current" "v1.0.0"
+  cmp -s "${deploy_root}/current/app.jar" "${jar_v1}"
 
-    bash "${systemd_dir}/deploy.sh" "${jar_v3}" "v1.2.0" >/dev/null
-    assert_symlink_version "${deploy_root}/current" "v1.2.0"
+  bash "${systemd_dir}/deploy.sh" "${jar_v3}" "v1.2.0" >/dev/null
+  assert_symlink_version "${deploy_root}/current" "v1.2.0"
 
-    bash "${systemd_dir}/rollback.sh" "v1.1.0" >/dev/null
-    assert_symlink_version "${deploy_root}/current" "v1.1.0"
-    cmp -s "${deploy_root}/current/app.jar" "${jar_v2}"
-  fi
+  bash "${systemd_dir}/rollback.sh" "v1.1.0" >/dev/null
+  assert_symlink_version "${deploy_root}/current" "v1.1.0"
+  cmp -s "${deploy_root}/current/app.jar" "${jar_v2}"
 
   log_pass "Spring Boot 3 宿主机全链路演练通过 [${tier}]"
 }
@@ -420,8 +410,8 @@ EOF
 
   if [[ "${tier}" != "quickstart" ]]; then
     assert_vue3_config_js "${deploy_root}/current/config.js" "v1.1.0" "https://api-v2.example.com" "${title_v2}"
-    assert_symlink_version "${deploy_root}/previous" "v1.0.0"
   fi
+  assert_symlink_version "${deploy_root}/previous" "v1.0.0"
 
   # 3. 重复发布保护
   if bash "${systemd_dir}/deploy.sh" "v1.1.0" "${dist_v2}" >/dev/null 2>&1; then
@@ -444,33 +434,36 @@ EOF
     return 1
   fi
 
-  # 5. production / hardened 回滚链路与审计自动回滚实测
+  # 5. 三级回滚链路与加固审计自动回滚实测
+  bash "${systemd_dir}/rollback.sh" >/dev/null
+  assert_symlink_version "${deploy_root}/current" "v1.0.0"
+  cmp -s "${deploy_root}/current/index.html" "${dist_v1}/index.html"
   if [[ "${tier}" != "quickstart" ]]; then
-    bash "${systemd_dir}/rollback.sh" >/dev/null
-    assert_symlink_version "${deploy_root}/current" "v1.0.0"
-    cmp -s "${deploy_root}/current/index.html" "${dist_v1}/index.html"
     assert_vue3_config_js "${deploy_root}/current/config.js" "v1.0.0" "https://api-v1.example.com" "${title_v1}"
+  fi
 
-    bash "${systemd_dir}/rollback.sh" "v1.1.0" >/dev/null
-    assert_symlink_version "${deploy_root}/current" "v1.1.0"
+  bash "${systemd_dir}/rollback.sh" "v1.1.0" >/dev/null
+  assert_symlink_version "${deploy_root}/current" "v1.1.0"
+  cmp -s "${deploy_root}/current/index.html" "${dist_v2}/index.html"
+  if [[ "${tier}" != "quickstart" ]]; then
     assert_vue3_config_js "${deploy_root}/current/config.js" "v1.1.0" "https://api-v2.example.com" "${title_v2}"
+  fi
 
-    if [[ "${tier}" == "hardened" ]]; then
-      if MOCK_CURL_MODE="no-nostore" \
-         MOCK_CONFIG_JS_FILE="${deploy_root}/current/config.js" \
-         CHECK_CONFIG_URL="http://127.0.0.1:18088/config.js" \
-         bash "${systemd_dir}/healthcheck.sh" >/dev/null 2>&1; then
-        log_error "Vue 3 hardened healthcheck.sh 未拦截缺少 Cache-Control: no-store 的响应"
-        return 1
-      fi
-
-      if AUTO_HEALTHCHECK="true" MOCK_CURL_MODE="fail" bash "${systemd_dir}/deploy.sh" "v1.2.0-bad" "${dist_bad}" >/dev/null 2>&1; then
-        log_error "Vue 3 hardened AUTO_HEALTHCHECK 失败时应退出非零"
-        return 1
-      fi
-      assert_symlink_version "${deploy_root}/current" "v1.1.0"
-      grep -Fq 'auto-rollback | v1.2.0-bad->v1.1.0' "${deploy_root}/deploy-history.log"
+  if [[ "${tier}" == "hardened" ]]; then
+    if MOCK_CURL_MODE="no-nostore" \
+       MOCK_CONFIG_JS_FILE="${deploy_root}/current/config.js" \
+       CHECK_CONFIG_URL="http://127.0.0.1:18088/config.js" \
+       bash "${systemd_dir}/healthcheck.sh" >/dev/null 2>&1; then
+      log_error "Vue 3 hardened healthcheck.sh 未拦截缺少 Cache-Control: no-store 的响应"
+      return 1
     fi
+
+    if AUTO_HEALTHCHECK="true" MOCK_CURL_MODE="fail" bash "${systemd_dir}/deploy.sh" "v1.2.0-bad" "${dist_bad}" >/dev/null 2>&1; then
+      log_error "Vue 3 hardened AUTO_HEALTHCHECK 失败时应退出非零"
+      return 1
+    fi
+    assert_symlink_version "${deploy_root}/current" "v1.1.0"
+    grep -Fq 'auto-rollback | v1.2.0-bad->v1.1.0' "${deploy_root}/deploy-history.log"
   fi
 
   log_pass "Vue 3 宿主机全链路演练通过 [${tier}]"
