@@ -1,0 +1,23 @@
+# 依赖与构建缓存
+**/node_modules
+**/dist
+**/dist-ssr
+**/.pnpm-store
+**/.vite
+**/*.tsbuildinfo
+**/coverage
+
+# 本地环境变量与密钥文件
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+
+# 版本控制、文档与无关载体配置
+.git
+.gitignore
+**/*.md
+deploy/compose
+deploy/systemd
+deploy/kubernetes
