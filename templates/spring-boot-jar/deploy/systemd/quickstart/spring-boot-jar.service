@@ -1,0 +1,31 @@
+[Unit]
+Description=Spring Boot 3 参考应用（quickstart 快速级）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/spring-boot-jar/current
+
+# 默认运行时配置，可通过下方 EnvironmentFile 覆盖
+Environment="TZ=Asia/Shanghai"
+Environment="SERVER_PORT=8080"
+Environment="TOMCAT_BASEDIR=/tmp/spring-boot-jar-tomcat"
+Environment="APP_NAME=spring-boot-jar-app"
+Environment="APP_ENV=quickstart"
+Environment="JAVA_OPTS=-Xms128m -Xmx512m"
+EnvironmentFile=-/etc/spring-boot-jar/app.env
+
+ExecStart=/usr/bin/java $JAVA_OPTS -jar /opt/spring-boot-jar/current/app.jar
+
+Restart=on-failure
+RestartSec=5
+SuccessExitStatus=143
+
+# 日志输出到标准流，统一交由 systemd-journald 纳管
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=spring-boot-jar
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,74 @@
+[Unit]
+Description=Spring Boot 3 参考应用（hardened 企业加固级）
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=springapp
+Group=springapp
+WorkingDirectory=/opt/spring-boot-jar/current
+
+# 默认运行时配置（默认仅绑定本机回环地址，由前置 Nginx 承接入口流量）
+Environment="TZ=Asia/Shanghai"
+Environment="SERVER_PORT=8080"
+Environment="SERVER_ADDRESS=127.0.0.1"
+Environment="MANAGEMENT_SERVER_PORT=8081"
+Environment="MANAGEMENT_SERVER_ADDRESS=127.0.0.1"
+Environment="TOMCAT_BASEDIR=/tmp/tomcat"
+Environment="APP_NAME=spring-boot-jar-app"
+Environment="APP_ENV=hardened"
+Environment="JAVA_OPTS=-XX:InitialRAMPercentage=25.0 -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/tmp -Djava.security.egd=file:/dev/./urandom"
+EnvironmentFile=-/etc/spring-boot-jar/app.env
+
+ExecStart=/usr/bin/java $JAVA_OPTS -jar /opt/spring-boot-jar/current/app.jar
+
+# 优雅停机：对应 Spring Boot graceful shutdown（20s），给予 30s 停机缓冲窗口
+KillSignal=SIGTERM
+TimeoutStopSec=30
+SuccessExitStatus=143
+
+Restart=on-failure
+RestartSec=5
+
+# cgroup 资源与文件创建权限收敛
+MemoryMax=768M
+TasksMax=256
+LimitNOFILE=65536
+UMask=0027
+
+# 日志输出到标准流，统一交由 systemd-journald 纳管
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=spring-boot-jar
+
+# systemd 安全沙箱指令（最小权限、只读系统视图、内核隔离与能力清零）
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@mount @privileged
+
+# 说明：JVM JIT 编译器需要可执行匿名内存页，不可启用 MemoryDenyWriteExecute=yes
+# 若自有业务确有本地文件写入需求，请按最小路径放行：ReadWritePaths=/var/lib/spring-boot-jar
+
+[Install]
+WantedBy=multi-user.target

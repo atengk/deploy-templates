@@ -1,0 +1,44 @@
+[Unit]
+Description=Spring Boot 3 参考应用（production 生产级）
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=springapp
+Group=springapp
+WorkingDirectory=/opt/spring-boot-jar/current
+
+# 默认运行时配置，可通过下方 EnvironmentFile 覆盖
+Environment="TZ=Asia/Shanghai"
+Environment="SERVER_PORT=8080"
+Environment="MANAGEMENT_SERVER_PORT=8081"
+Environment="TOMCAT_BASEDIR=/tmp/tomcat"
+Environment="APP_NAME=spring-boot-jar-app"
+Environment="APP_ENV=production"
+Environment="JAVA_OPTS=-XX:InitialRAMPercentage=25.0 -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/tmp -Djava.security.egd=file:/dev/./urandom"
+EnvironmentFile=-/etc/spring-boot-jar/app.env
+
+ExecStart=/usr/bin/java $JAVA_OPTS -jar /opt/spring-boot-jar/current/app.jar
+
+# 优雅停机：对应 Spring Boot graceful shutdown（20s），给予 30s 停机缓冲窗口
+KillSignal=SIGTERM
+TimeoutStopSec=30
+SuccessExitStatus=143
+
+Restart=on-failure
+RestartSec=5
+
+# cgroup 内存与文件描述符限额（与 MaxRAMPercentage=75.0 协同防止 OOM）
+MemoryMax=768M
+LimitNOFILE=65536
+
+# 日志输出到标准流，统一交由 systemd-journald 纳管
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=spring-boot-jar
+
+[Install]
+WantedBy=multi-user.target
