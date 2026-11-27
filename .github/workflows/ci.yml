@@ -21,6 +21,7 @@ jobs:
     outputs:
       spring_boot: ${{ steps.compute.outputs.spring_boot }}
       vue3: ${{ steps.compute.outputs.vue3 }}
+      release_dryrun: ${{ steps.compute.outputs.release_dryrun }}
     steps:
       - name: 检出代码（用于路径变更过滤）
         if: github.event_name != 'workflow_dispatch'
@@ -41,6 +42,7 @@ jobs:
               - 'scripts/verify-host.sh'
               - 'scripts/verify-k8s.sh'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/release.yml'
             vue3:
               - 'templates/vue3-pnpm/**'
               - '!templates/vue3-pnpm/**/*.md'
@@ -48,6 +50,15 @@ jobs:
               - 'scripts/verify-host.sh'
               - 'scripts/verify-k8s.sh'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/release.yml'
+            release_dryrun:
+              - 'templates/spring-boot-jar/**'
+              - '!templates/spring-boot-jar/**/*.md'
+              - 'templates/vue3-pnpm/**'
+              - '!templates/vue3-pnpm/**/*.md'
+              - 'scripts/package-release.sh'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/release.yml'
 
       - name: 计算待执行门禁范围（手动触发全量执行，纯文档跳过耗时构建）
         id: compute
@@ -56,9 +67,11 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "spring_boot=true" >> "${GITHUB_OUTPUT}"
             echo "vue3=true" >> "${GITHUB_OUTPUT}"
+            echo "release_dryrun=true" >> "${GITHUB_OUTPUT}"
           else
             echo "spring_boot=${{ steps.filter.outputs.spring_boot || 'false' }}" >> "${GITHUB_OUTPUT}"
             echo "vue3=${{ steps.filter.outputs.vue3 || 'false' }}" >> "${GITHUB_OUTPUT}"
+            echo "release_dryrun=${{ steps.filter.outputs.release_dryrun || 'false' }}" >> "${GITHUB_OUTPUT}"
           fi
 
   repo-baseline:
@@ -312,3 +325,132 @@ jobs:
           else
             bash scripts/verify-k8s.sh --stack vue3-pnpm
           fi
+
+  release-dryrun:
+    name: 发版打包干跑与工作流边界校验
+    needs: [changes, repo-baseline]
+    if: needs.changes.outputs.release_dryrun == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 检出仓库源码
+        uses: actions/checkout@v4
+
+      - name: 校验发版流水线触发边界、权限与脚本语法
+        run: |
+          if ! python3 -c "import yaml" >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y python3-yaml
+          fi
+          python3 - <<'PYEOF'
+          import os
+          import re
+          import subprocess
+          import tempfile
+          import yaml
+
+          with open(".github/workflows/release.yml", "r", encoding="utf-8") as fh:
+              text = fh.read()
+          data = yaml.safe_load(text)
+          on_block = data.get("on", data.get(True))
+          assert isinstance(on_block, dict) and list(on_block.keys()) == ["push"], f"非法触发器: {on_block}"
+          assert list(on_block["push"].keys()) == ["tags"] and on_block["push"]["tags"] == ["v*.*.*"], f"非法 tags: {on_block['push']}"
+          assert "contents: write" in text and "packages: write" in text, "release.yml 缺少最小权限声明"
+          assert "write-all" not in text, "release.yml 严禁使用 write-all"
+          assert "docker save" not in text, "release.yml 严禁使用 docker save"
+
+          expr_re = re.compile(r"\$\{\{.*?\}\}", re.DOTALL)
+          for job_id, job_cfg in data.get("jobs", {}).items():
+              for step in job_cfg.get("steps", []):
+                  if "run" not in step or step.get("shell", "bash") not in ("bash", "sh"):
+                      continue
+                  script = expr_re.sub("GH_EXPR_VALUE", step["run"])
+                  with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False, encoding="utf-8") as tf:
+                      tf.write(script)
+                      tf_path = tf.name
+                  try:
+                      subprocess.run(["bash", "-n", tf_path], check=True)
+                  finally:
+                      os.unlink(tf_path)
+          print("[PASS] release.yml 触发边界、权限与脚本语法校验通过")
+          PYEOF
+
+      - name: 配置 JDK 21（Temurin）与 Maven 缓存
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: 安装 pnpm 11.21.0
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.21.0
+
+      - name: 配置 Node.js 22 与 pnpm 缓存
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: templates/vue3-pnpm/app/pnpm-lock.yaml
+
+      - name: 离线干跑统一发版打包脚本并断言产物契约
+        run: |
+          DRYRUN_VER="v0.0.0-dryrun"
+          DRYRUN_OUT="$(mktemp -d)"
+          DRYRUN_VERIFY="$(mktemp -d)"
+          trap 'rm -rf "${DRYRUN_OUT}" "${DRYRUN_VERIFY}"' EXIT
+
+          bash scripts/package-release.sh --version "${DRYRUN_VER}" --output-dir "${DRYRUN_OUT}" --install-deps always
+
+          for artifact in \
+            "spring-boot-jar-${DRYRUN_VER}.jar" \
+            "vue3-pnpm-dist-${DRYRUN_VER}.tar.gz" \
+            "spring-boot-jar-systemd-${DRYRUN_VER}.tar.gz" \
+            "vue3-pnpm-systemd-${DRYRUN_VER}.tar.gz" \
+            "SHA256SUMS.txt"; do
+            test -s "${DRYRUN_OUT}/${artifact}"
+          done
+
+          ! grep -q '/' "${DRYRUN_OUT}/SHA256SUMS.txt"
+          (cd "${DRYRUN_OUT}" && sha256sum -c SHA256SUMS.txt)
+
+          # 校验版本号已精确注入 Jar 与静态产物
+          APP_YML="$(JAR_FILE="${DRYRUN_OUT}/spring-boot-jar-${DRYRUN_VER}.jar" python3 - <<'PYEOF'
+          import os, zipfile
+          with zipfile.ZipFile(os.environ["JAR_FILE"], "r") as zf:
+              print(zf.read("BOOT-INF/classes/application.yml").decode("utf-8"))
+          PYEOF
+          )"
+          ! grep -Fq '@app.version@' <<< "${APP_YML}"
+          grep -Fq "${DRYRUN_VER}" <<< "${APP_YML}"
+
+          mkdir -p "${DRYRUN_VERIFY}/vue-dist" "${DRYRUN_VERIFY}/sb-systemd" "${DRYRUN_VERIFY}/vue-systemd"
+          tar -xzf "${DRYRUN_OUT}/vue3-pnpm-dist-${DRYRUN_VER}.tar.gz" -C "${DRYRUN_VERIFY}/vue-dist"
+          test -s "${DRYRUN_VERIFY}/vue-dist/dist/index.html"
+          grep -rFq "${DRYRUN_VER}" "${DRYRUN_VERIFY}/vue-dist/dist/assets"
+
+          # 校验两栈宿主机即用部署归档结构完整
+          tar -xzf "${DRYRUN_OUT}/spring-boot-jar-systemd-${DRYRUN_VER}.tar.gz" -C "${DRYRUN_VERIFY}/sb-systemd"
+          test -s "${DRYRUN_VERIFY}/sb-systemd/spring-boot-jar-systemd-${DRYRUN_VER}/README.md"
+          test -s "${DRYRUN_VERIFY}/sb-systemd/spring-boot-jar-systemd-${DRYRUN_VER}/app.jar"
+          test -s "${DRYRUN_VERIFY}/sb-systemd/spring-boot-jar-systemd-${DRYRUN_VER}/deploy/systemd/quickstart/app.env.example"
+          test -s "${DRYRUN_VERIFY}/sb-systemd/spring-boot-jar-systemd-${DRYRUN_VER}/deploy/systemd/production/deploy.sh"
+          test -s "${DRYRUN_VERIFY}/sb-systemd/spring-boot-jar-systemd-${DRYRUN_VER}/deploy/systemd/hardened/spring-boot-jar.service"
+
+          tar -xzf "${DRYRUN_OUT}/vue3-pnpm-systemd-${DRYRUN_VER}.tar.gz" -C "${DRYRUN_VERIFY}/vue-systemd"
+          test -s "${DRYRUN_VERIFY}/vue-systemd/vue3-pnpm-systemd-${DRYRUN_VER}/README.md"
+          test -s "${DRYRUN_VERIFY}/vue-systemd/vue3-pnpm-systemd-${DRYRUN_VER}/dist/index.html"
+          test -s "${DRYRUN_VERIFY}/vue-systemd/vue3-pnpm-systemd-${DRYRUN_VER}/deploy/systemd/quickstart/app.env.example"
+          test -s "${DRYRUN_VERIFY}/vue-systemd/vue3-pnpm-systemd-${DRYRUN_VER}/deploy/systemd/production/deploy.sh"
+          test -s "${DRYRUN_VERIFY}/vue-systemd/vue3-pnpm-systemd-${DRYRUN_VER}/deploy/systemd/hardened/nginx.conf"
+
+          # 校验归档内不含真实 .env 文件或明文凭据
+          ! find "${DRYRUN_VERIFY}" -type f \( -name '.env' -o -name '.env.*' -o -name '*.env' -o -name '*.env.*' \) ! -name '*.env.example' ! -name '.env.example' | grep -q .
+          PK_BEGIN="-----BEGIN "
+          PK_END="PRIVATE KEY-----"
+          ! grep -rE -e "${PK_BEGIN}(RSA |EC |DSA |OPENSSH |PGP )?${PK_END}" "${DRYRUN_VERIFY}"
+          ! grep -rE -e '(ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16})' "${DRYRUN_VERIFY}"
+
+          # 校验打包过程未篡改工作区源码（如 pom.xml / package.json 版本）
+          git diff --exit-code -- templates/spring-boot-jar/app/pom.xml templates/vue3-pnpm/app/package.json
+          echo "[PASS] 发版打包干跑验证全部通过"
