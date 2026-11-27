@@ -16,11 +16,12 @@
 ```text
 deploy/systemd/
 ├── README.md                     # 本说明文档
-├── quickstart/                   # 快速级：基础 Nginx 站点配置、软链发布与健康探测
+├── quickstart/                   # 快速级：基础 Nginx 站点配置、软链发布、一键回滚与健康探测
 │   ├── app.env.example
 │   ├── deploy.sh
 │   ├── healthcheck.sh
-│   └── nginx.conf
+│   ├── nginx.conf
+│   └── rollback.sh
 ├── production/                   # 生产级：运行时配置注入、分级缓存、基础安全头与一键回滚
 │   ├── app.env.example
 │   ├── deploy.sh
@@ -44,7 +45,7 @@ deploy/systemd/
 | **一次构建，运行时注入** | 回退构建期变量或占位脚本 | `deploy.sh` 安全解析环境配置并转义生成 `releases/<版本号>/config.js` | 与生产级同一转义契约生成 `config.js`，随版本目录原子切换 |
 | **路由与缓存治理** | SPA History 回退 + `/healthz` | `assets/` 一年不可变缓存、`index.html` 与 `/config.js` 严格 `no-store` | 继承分级缓存，并屏蔽 `.git`/`.env` 等隐藏文件（放行 `/.well-known/`） |
 | **安全响应头与方法约束** | 默认基础响应头 | `X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy` | 叠加严格 CSP、`Permissions-Policy`、COOP/CORP 与只读 HTTP 方法限制（非 GET/HEAD/OPTIONS 返回 405） |
-| **发布与回滚治理** | 暂存落盘 + `current` 软链接原子切换 | 增加 `.previous_version`/`previous` 指针、`rollback.sh` 支持指定或回退上一可用版本 | 增加不可变目录防覆写、只读权限收敛、保留策略清理（`KEEP_RELEASES`）、`deploy-history.log` 审计与 `AUTO_HEALTHCHECK` 失败自动回滚 |
+| **发布与回滚治理** | 暂存落盘 + `current` 软链接原子切换 + `rollback.sh` 一键回滚 | 增加 `.previous_version`/`previous` 指针、`rollback.sh` 支持指定或回退上一可用版本 | 增加不可变目录防覆写、只读权限收敛、保留策略清理（`KEEP_RELEASES`）、`deploy-history.log` 审计与 `AUTO_HEALTHCHECK` 失败自动回滚 |
 | **健康探测** | `/healthz` 重试探测 | `/healthz` 探测 + 可选 `CHECK_CONFIG_URL` 校验 | `/healthz` 探测 + 可选 `CHECK_CONFIG_URL` 正文及 `Cache-Control: no-store` 校验 |
 
 ## 宿主机安装与运维指南

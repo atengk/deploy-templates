@@ -9,6 +9,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# shellcheck source=scripts/lib/common.sh
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib/common.sh"
+
 VERSION="${RELEASE_VERSION:-}"
 OUT_DIR="${OUTPUT_DIR:-}"
 INSTALL_DEPS="${INSTALL_DEPS:-auto}"
@@ -29,18 +33,6 @@ usage() {
 EOF
 }
 
-log_info() {
-  printf '[INFO] %s\n' "$*"
-}
-
-log_pass() {
-  printf '[PASS] %s\n' "$*"
-}
-
-log_error() {
-  printf '[ERROR] %s\n' "$*" >&2
-}
-
 cleanup() {
   if [[ -n "${WORK_TMP}" && -d "${WORK_TMP}" ]]; then
     chmod -R u+rwX "${WORK_TMP}" 2>/dev/null || true
@@ -48,17 +40,6 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
-
-detect_python() {
-  local cand=""
-  for cand in python3 python; do
-    if command -v "${cand}" >/dev/null 2>&1 && "${cand}" -c "import zipfile" >/dev/null 2>&1; then
-      printf '%s\n' "${cand}"
-      return 0
-    fi
-  done
-  return 1
-}
 
 read_jar_application_yml() {
   local jar_file="$1"
@@ -69,7 +50,7 @@ read_jar_application_yml() {
     return 0
   fi
 
-  if py_cmd="$(detect_python)"; then
+  if py_cmd="$(detect_python zipfile)"; then
     JAR_FILE="${jar_file}" "${py_cmd}" - <<'PYEOF'
 import os
 import zipfile
@@ -148,29 +129,11 @@ copy_systemd_tier_files() {
   done
 }
 
-# 验证暂存目录无真实 .env 文件与敏感凭据
+# 验证暂存目录无真实 .env 文件与敏感凭据（复用公共安全扫描）
 verify_stage_clean_and_safe() {
   local stage_dir="$1"
   local label="$2"
-  local pk_begin="-----BEGIN "
-  local pk_end="PRIVATE KEY-----"
-  local env_hits=""
-
-  env_hits="$(find "${stage_dir}" -type f \( -name '.env' -o -name '.env.*' -o -name '*.env' -o -name '*.env.*' \) ! -name '*.env.example' ! -name '.env.example' || true)"
-  if [[ -n "${env_hits}" ]]; then
-    log_error "${label} 归档暂存区检测到禁止打包的真实环境文件：${env_hits}"
-    exit 1
-  fi
-
-  if grep -rE -e "${pk_begin}(RSA |EC |DSA |OPENSSH |PGP )?${pk_end}" "${stage_dir}" >/dev/null 2>&1; then
-    log_error "${label} 归档暂存区检测到明文私钥"
-    exit 1
-  fi
-
-  if grep -rE -e '(ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|xox[baprs]-[0-9A-Za-z-]{10,})' "${stage_dir}" >/dev/null 2>&1; then
-    log_error "${label} 归档暂存区检测到疑似第三方密钥或令牌"
-    exit 1
-  fi
+  verify_dir_clean_and_safe "${stage_dir}" "${label}" || exit 1
 }
 
 build_spring_boot_artifacts() {

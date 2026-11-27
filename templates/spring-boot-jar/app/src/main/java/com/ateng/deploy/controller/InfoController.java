@@ -30,10 +30,10 @@ public class InfoController {
     /**
      * 构造基础信息控制器。
      *
-     * @param environment     Spring 运行环境上下文
+     * @param environment     Spring 环境属性上下文
      * @param applicationName 应用名称
      * @param appVersion      应用版本号
-     * @param appEnv          当前运行环境标签
+     * @param appEnv          当前环境属性标签
      * @param appMessage      自定义展示消息
      * @param externalApiUrl  外部依赖地址配置（仅用于判断配置状态）
      */
@@ -77,7 +77,7 @@ public class InfoController {
     /**
      * 返回参考应用运行态、端口治理与非敏感环境变量摘要。
      *
-     * @return 结构化应用与运行环境摘要
+     * @return 结构化应用与运行时状态摘要
      */
     @GetMapping("/api/info")
     public Map<String, Object> info() {

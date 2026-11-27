@@ -4,12 +4,12 @@
 
 ## 核心设计原则
 
-- **自包含可验证**：每个**技术栈**维护唯一一份极简可运行的**参考应用**（详见 [ADR-0001](./docs/adr/0001-self-contained-verifiable-templates.md)），保障全部部署配置均可真实构建、启动并通过健康检查，同时保持配置与业务代码解耦。
+- **自包含可验证**：每个**技术栈**维护唯一一份极简可运行的**参考应用**（详见 [ADR-0001](./docs/adr/0001-self-contained-verifiable-templates.md)），保障全部部署配置均可真实构建、启动并通过健康检查验证，同时保持配置与应用源码解耦。
 - **单应用交付**：所有模板严格遵守**单应用交付**边界（详见 [ADR-0002](./docs/adr/0002-app-only-delivery-boundary.md)），仅负责应用自身的构建、运行与治理，不捆绑数据库、缓存或消息队列等有状态中间件容器，外部依赖统一通过环境变量注入。
 - **独立等级副本**：同一**部署载体**下的三个**交付等级**各自维护完整、独立可读的配置集合（详见 [ADR-0003](./docs/adr/0003-topology-and-independent-tiers.md)），不依赖跨等级隐式继承拼装，便于按需直接单目录拷贝复用。
 - **一次构建，运行时注入**：前端纯静态**参考应用**在构建阶段不固化环境差异配置，而在启动或部署阶段通过外部环境变量动态生成运行时配置脚本。
 - **国内网络与时区友好**：容器构建默认走官方上游源以保证通用性，同时暴露镜像仓库前缀、Maven 镜像与 pnpm 仓库覆盖参数；运行镜像默认配置 `Asia/Shanghai` 时区并支持 `TZ` 环境变量覆盖。
-- **双流水线严格隔离**：[日常验证流水线](./.github/workflows/ci.yml) 仅负责按路径过滤的四载体质量与安全门禁（绝不推送镜像或发布附件）；**发版流水线**严格仅由语义化发布标签（`v*.*.*`）触发（详见 [ADR-0004](./docs/adr/0004-tag-gated-release-and-artifact-split.md)）。
+- **双流水线严格隔离**：[日常验证流水线](./.github/workflows/ci.yml) 仅负责按路径过滤的四载体质量与安全门禁（绝不推送镜像或发布附件）；[发版流水线](./.github/workflows/release.yml) 严格仅由语义化发布标签（`v*.*.*`）触发（详见 [ADR-0004](./docs/adr/0004-tag-gated-release-and-artifact-split.md)）。
 
 ## 交付等级划分
 
@@ -65,31 +65,33 @@ pnpm --dir templates/vue3-pnpm/app test
 pnpm --dir templates/vue3-pnpm/app build
 ```
 
-### 2. 使用统一验证脚本本地自检
+### 2. 使用统一验证与打包脚本本地自检
 
-仓库在 [`scripts/`](./scripts/) 下提供四个跨平台可复用验证脚本，覆盖仓库基线与全部四类部署载体：
+仓库在 [`scripts/`](./scripts/) 下提供统一验证与发版打包脚本（公共日志、Python 探测与明文凭据扫描函数统一收口在 [`scripts/lib/common.sh`](./scripts/lib/common.sh)），覆盖仓库基线、全部四类部署载体与离线发版打包：
 
-| 验证脚本 | 核心覆盖范围 | 常用运行命令 |
+| 脚本入口 | 核心覆盖范围 | 常用运行命令 |
 | :--- | :--- | :--- |
-| [`scripts/verify-repo.sh`](./scripts/verify-repo.sh) | LF 行尾、`.sh` `100755` 权限、Markdown 无本地绝对路径或 `file` 协议路径与断链检查、明文凭据与禁用词扫描 | `bash scripts/verify-repo.sh` |
+| [`scripts/verify-repo.sh`](./scripts/verify-repo.sh) | LF 行尾、`.sh` 权限、Markdown 无本地绝对路径或 `file` 协议路径与断链检查、明文凭据与禁用词扫描 | `bash scripts/verify-repo.sh` |
 | [`scripts/verify-containers.sh`](./scripts/verify-containers.sh) | 构建并拉起两栈全部 6 个 Docker 容器与 6 个 Compose 编排，黑盒实测 HTTP 契约、端口隔离、`SIGTERM` 退出、运行时 `/config.js` 注入与只读运行 | `bash scripts/verify-containers.sh --stack all` |
 | [`scripts/verify-host.sh`](./scripts/verify-host.sh) | 在隔离临时目录中演练两栈三级宿主机首次发布、升级、不可变防重、回滚与健康检查（兼容 Git Bash 与 Linux） | `bash scripts/verify-host.sh --stack all` |
 | [`scripts/verify-k8s.sh`](./scripts/verify-k8s.sh) | 使用 `kubectl kustomize` 渲染全部 6 套清单，按工具链可用性执行 `kubeconform -strict` 与 `trivy config` 审计 | `bash scripts/verify-k8s.sh --stack all` |
+| [`scripts/package-release.sh`](./scripts/package-release.sh) | 以传入版本号为唯一真相源构建双技术栈离线交付件、宿主机部署归档及 `SHA256SUMS.txt` 校验清单 | `bash scripts/package-release.sh --version v0.0.1-dryrun` |
 
 > [!TIP]
 > 在具备完整容器与 Kubernetes 安全工具链的节点上，可通过 `REQUIRE_ALL_TOOLS=true bash scripts/verify-k8s.sh --stack all` 强制开启 `kubeconform -strict` 与 `trivy config` 检查；国内网络构建镜像时可通过环境变量覆盖 `BASE_IMAGE_REGISTRY`、`GCR_REGISTRY`、`MAVEN_MIRROR_URL` 与 `PNPM_REGISTRY`。
 
 ## 日常验证流水线（CI 门禁）
 
-[`.github/workflows/ci.yml`](./.github/workflows/ci.yml) 在 `pull_request`、推送 `main` 与手动 `workflow_dispatch` 时运行，声明最小只读权限 `permissions: contents: read` 并执行以下分层门禁：
+[`.github/workflows/ci.yml`](./.github/workflows/ci.yml) 在 `pull_request`、推送 `main` 与手动 `workflow_dispatch` 时运行，声明最小只读权限 `permissions: contents: read` 并通过可复用校验工作流 [`.github/workflows/verify.yml`](./.github/workflows/verify.yml) 执行以下分层门禁：
 
 - **智能路径分流**：纯文档改动仅运行 `verify-repo.sh` 与 `shellcheck`；单技术栈变更仅执行对应栈门禁；公共脚本或工作流变更及 `workflow_dispatch` 触发全量验证。
 - **应用与容器门禁**：执行参考应用测试与构建、`hadolint` 静态扫描全部 6 个 `Dockerfile`、`verify-containers.sh` 真实拉起实测，以及 `trivy image`（输出 `HIGH,CRITICAL` 完整报告并对存在修复版本的 `CRITICAL` 严格阻断）。
 - **宿主机与 Kubernetes 门禁**：在 Ubuntu Runner 上运行 `shellcheck`、`systemd-analyze verify`、`nginx -t`（按各配置真实语法层级构造外层包裹校验）、`verify-host.sh` 与开启 `REQUIRE_ALL_TOOLS=true` 的 `verify-k8s.sh`。
+- **发版干跑与边界校验**：运行 `package-release.sh` 离线验证产物完整性，并通过 PyYAML 与 `bash -n` 静态校验全部工作流边界与内嵌脚本语法。
 
 ## 容器镜像与发版产物使用说明
 
-正式发版由语义化发布标签（`v*.*.*`）触发独立发版流水线构建并同步发布多架构 GHCR 容器镜像与 GitHub Release **发版产物**（具体发版工作流随发版流水线工单落地）：
+正式发版严格仅由语义化发布标签（`v*.*.*`）触发 [`.github/workflows/release.yml`](./.github/workflows/release.yml)，先调用 [`.github/workflows/verify.yml`](./.github/workflows/verify.yml) 完成全量前置质量与安全门禁，再同步发布双架构 GHCR 容器镜像并借助 [`scripts/package-release.sh`](./scripts/package-release.sh) 构建上传 GitHub Release **发版产物**：
 
 ### 1. GHCR 容器镜像坐标
 
@@ -142,15 +144,20 @@ sha256sum -c SHA256SUMS.txt --ignore-missing
 ├── .gitignore                       # 构建产物、本地 .env* 与临时文件忽略规则
 ├── .github/
 │   └── workflows/
-│       └── ci.yml                   # 四载体分层日常验证流水线
+│       ├── ci.yml                   # 四载体分层日常验证入口流水线
+│       ├── verify.yml               # 可复用多载体质量与安全门禁工作流
+│       └── release.yml              # 仅由 v*.*.* 标签触发的发版流水线
 ├── docs/
 │   ├── adr/                         # 架构决策记录（ADR-0001 至 ADR-0004）
 │   └── agents/                      # 领域建模与 Issue 分诊协作规范
 ├── scripts/
+│   ├── lib/
+│   │   └── common.sh                # 公共日志、Python 探测与明文凭据扫描函数库
 │   ├── verify-repo.sh               # 仓库基线静态检查脚本
 │   ├── verify-containers.sh         # Docker 与 Compose 容器契约黑盒验证脚本
 │   ├── verify-host.sh               # 宿主机全链路隔离演练脚本
-│   └── verify-k8s.sh                # Kubernetes Kustomize 与安全审计脚本
+│   ├── verify-k8s.sh                # Kubernetes Kustomize 与安全审计脚本
+│   └── package-release.sh           # 发版产物统一构建打包与校验清单生成脚本
 └── templates/
     ├── spring-boot-jar/             # Spring Boot 3 技术栈参考应用与四载体三级副本
     └── vue3-pnpm/                   # Vue 3 技术栈参考应用与四载体三级副本

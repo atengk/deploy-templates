@@ -9,6 +9,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# shellcheck source=scripts/lib/common.sh
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib/common.sh"
+
 TARGET_STACK="all"
 REQUIRE_ALL_TOOLS="${REQUIRE_ALL_TOOLS:-false}"
 WORK_TMP=""
@@ -22,32 +26,12 @@ usage() {
 EOF
 }
 
-log_info() {
-  printf '[INFO] %s\n' "$*"
-}
-
-log_pass() {
-  printf '[PASS] %s\n' "$*"
-}
-
-log_skip() {
-  printf '[SKIP] %s\n' "$*"
-}
-
-log_error() {
-  printf '[ERROR] %s\n' "$*" >&2
-}
-
 cleanup() {
   if [[ -n "${WORK_TMP}" && -d "${WORK_TMP}" ]]; then
     rm -rf "${WORK_TMP}"
   fi
 }
 trap cleanup EXIT
-
-is_true() {
-  [[ "${1:-}" == "true" || "${1:-}" == "1" ]]
-}
 
 while [[ "$#" -gt 0 ]]; do
   case "$1" in

@@ -184,6 +184,8 @@ fi
 RELEASES_DIR="${DEPLOY_ROOT}/releases"
 RELEASE_DIR="${RELEASES_DIR}/${ARG_VERSION}"
 CURRENT_LINK="${DEPLOY_ROOT}/current"
+PREVIOUS_LINK="${DEPLOY_ROOT}/previous"
+PREVIOUS_FILE="${DEPLOY_ROOT}/.previous_version"
 STAGING_DIR="${RELEASES_DIR}/.staging-${ARG_VERSION}-$$"
 
 mkdir -p "$RELEASES_DIR"
@@ -221,8 +223,23 @@ if ! is_truthy "$SKIP_NGINX_RELOAD"; then
   bash -c "$NGINX_TEST_CMD"
 fi
 
-# 4. 原子切换 current 软链接指向新版本目录
+# 4. 记录切换前激活版本供一键回滚使用，随后原子切换 current 软链接
+prev_version=""
+if [ -L "$CURRENT_LINK" ]; then
+  prev_target="$(readlink -f "$CURRENT_LINK" 2>/dev/null || true)"
+  if [ -n "$prev_target" ] && [ -d "$prev_target" ]; then
+    prev_version="$(basename "$prev_target")"
+  fi
+fi
+
 atomic_switch_symlink "$RELEASE_DIR" "$CURRENT_LINK"
+
+if [ -n "$prev_version" ] && [ "$prev_version" != "$ARG_VERSION" ] && [ -d "${RELEASES_DIR}/${prev_version}" ]; then
+  printf '%s\n' "$prev_version" > "${PREVIOUS_FILE}.tmp.$$"
+  mv -f "${PREVIOUS_FILE}.tmp.$$" "$PREVIOUS_FILE"
+  atomic_switch_symlink "${RELEASES_DIR}/${prev_version}" "$PREVIOUS_LINK"
+fi
+
 log_info "已发布版本 ${ARG_VERSION} -> ${CURRENT_LINK}"
 
 # 5. 平滑重载系统 Nginx 服务

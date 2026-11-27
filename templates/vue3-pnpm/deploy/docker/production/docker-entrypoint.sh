@@ -20,6 +20,10 @@ mkdir -p "${RUNTIME_DIR}" \
 
 # 2. 通过 awk ENVIRON 安全读取并转义环境变量，避免 Shell 展开与 XSS 注入风险
 LC_ALL=C awk '
+function trim(s) {
+  gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, "", s)
+  return s
+}
 function escape_js(s,    i, n, c, out) {
   out = ""
   n = length(s)
@@ -44,7 +48,7 @@ BEGIN {
   count = 0
   for (i = 1; i <= 4; i++) {
     k = keys[i]
-    v = ENVIRON[k]
+    v = trim(ENVIRON[k])
     if (v != "") {
       count++
       entries[count] = sprintf("  %s: \"%s\"", k, escape_js(v))

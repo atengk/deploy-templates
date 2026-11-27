@@ -12,6 +12,7 @@ data:
   # 前端“一次构建，运行时注入”契约环境变量：
   # 只读根文件系统模式下由入口脚本安全转义后写入挂载在 emptyDir 的 /tmp/app-runtime/config.js
   APP_TITLE: "Vue 3 参考应用（企业加固级）"
-  APP_VERSION: "0.0.0-dev"
+  # 不配置 APP_VERSION 时保留镜像内构建期注入的 VITE_APP_VERSION；仅需运行期覆盖时取消注释并填写非空值
+  # APP_VERSION: ""
   APP_ENV: "production"
   APP_API_BASE_URL: "https://api.example.com"

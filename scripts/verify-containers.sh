@@ -9,6 +9,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# shellcheck source=scripts/lib/common.sh
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib/common.sh"
+
 TARGET_STACK="all"
 SKIP_DOCKER="false"
 SKIP_COMPOSE="false"
@@ -31,18 +35,6 @@ ACTIVE_COMPOSE_FILES=()
 ACTIVE_COMPOSE_PROJECTS=()
 BUILT_IMAGES=()
 WORK_TMP=""
-
-log_info() {
-  printf '[INFO] %s\n' "$*"
-}
-
-log_pass() {
-  printf '[PASS] %s\n' "$*"
-}
-
-log_error() {
-  printf '[ERROR] %s\n' "$*" >&2
-}
 
 cleanup() {
   local i=0
@@ -129,21 +121,10 @@ require_docker_tools() {
   fi
 }
 
-detect_python() {
-  local cand=""
-  for cand in python3 python; do
-    if command -v "${cand}" >/dev/null 2>&1 && "${cand}" -c "import socket" >/dev/null 2>&1; then
-      printf '%s\n' "${cand}"
-      return 0
-    fi
-  done
-  return 1
-}
-
 NEXT_FALLBACK_PORT=18100
 pick_free_port() {
   local py_cmd=""
-  if py_cmd="$(detect_python)"; then
+  if py_cmd="$(detect_python socket)"; then
     "${py_cmd}" -c "import socket; s=socket.socket(); s.bind(('127.0.0.1', 0)); print(s.getsockname()[1]); s.close()"
     return 0
   fi
@@ -302,6 +283,112 @@ build_spring_boot_image() {
   BUILT_IMAGES+=("${image}")
 }
 
+# 统一校验运行中容器的非 root 用户与只读根文件系统约束
+assert_container_runtime_security() {
+  local cid="$1"
+  local label="$2"
+  local expected_exec_uid="$3"
+  local expected_config_user="$4"
+  local require_ro="$5"
+  local ro_probe_path="${6:-}"
+
+  if [[ -n "${expected_exec_uid}" ]]; then
+    local actual_uid=""
+    actual_uid="$(docker exec "${cid}" id -u)"
+    if [[ "${actual_uid}" != "${expected_exec_uid}" ]]; then
+      log_error "${label} 非 root UID 校验失败（期望 ${expected_exec_uid}，实际 ${actual_uid}）"
+      return 1
+    fi
+  fi
+
+  if [[ -n "${expected_config_user}" ]]; then
+    local actual_user=""
+    actual_user="$(docker inspect --format '{{.Config.User}}' "${cid}")"
+    if [[ "${actual_user}" != "${expected_config_user}" ]]; then
+      log_error "${label} 运行用户配置校验失败（期望 ${expected_config_user}，实际 ${actual_user}）"
+      return 1
+    fi
+  fi
+
+  if [[ "${require_ro}" == "true" ]]; then
+    local ro_flag=""
+    ro_flag="$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "${cid}")"
+    if [[ "${ro_flag}" != "true" ]]; then
+      log_error "${label} 只读根文件系统校验失败（期望 ReadonlyRootfs=true，实际 ${ro_flag}）"
+      return 1
+    fi
+    if [[ -n "${ro_probe_path}" ]] && docker exec "${cid}" touch "${ro_probe_path}" 2>/dev/null; then
+      log_error "${label} 静态路径在 read_only 模式下仍被写入：${ro_probe_path}"
+      return 1
+    fi
+  fi
+}
+
+assert_spring_boot_no_otlp_errors() {
+  local cid="$1"
+  if docker logs "${cid}" 2>&1 | grep -qiE '(Failed to export spans|Connection refused.*431[78])'; then
+    log_error "容器日志检测到意外的 OTLP 连接报错（${cid}）"
+    docker logs --tail 50 "${cid}" >&2 || true
+    return 1
+  fi
+}
+
+# 统一校验 Spring Boot 3 在 Docker 与 Compose 模式下的安全约束、HTTP 契约、管理端口隔离与优雅停机
+verify_spring_boot_running_instance() {
+  local mode="$1"
+  local tier="$2"
+  local cid="$3"
+  local port="$4"
+  local mgmt_port="$5"
+  local body_file="$6"
+  local hdr_file="$7"
+  local label="Spring Boot ${mode} ${tier}"
+
+  if [[ "${tier}" == "quickstart" ]]; then
+    wait_http_200 "http://127.0.0.1:${port}/api/info" 60
+    http_get_assert "http://127.0.0.1:${port}/api/info" "200" "${body_file}" "${hdr_file}"
+    assert_body_contains "${body_file}" '"application":"spring-boot-jar-app"' "${label} /api/info"
+    assert_body_contains "${body_file}" '"otlpEnabled":false' "${label} OTLP 默认关闭"
+
+    http_get_assert "http://127.0.0.1:${port}/actuator/health" "200" "${body_file}" "${hdr_file}"
+    assert_body_contains "${body_file}" '"status":"UP"' "${label} /actuator/health"
+    assert_spring_boot_no_otlp_errors "${cid}"
+    return 0
+  fi
+
+  wait_container_healthy "${cid}" 90
+  if [[ "${tier}" == "production" ]]; then
+    assert_container_runtime_security "${cid}" "${label}" "10001" "" "false"
+  else
+    assert_container_runtime_security "${cid}" "${label}" "" "65532:65532" "true"
+  fi
+
+  http_get_assert "http://127.0.0.1:${port}/api/info" "200" "${body_file}" "${hdr_file}"
+  assert_body_contains "${body_file}" '"managementPort":8081' "${label} 独立管理端口 8081"
+  assert_body_contains "${body_file}" '"otlpEnabled":false' "${label} OTLP 默认关闭"
+  http_get_assert "http://127.0.0.1:${port}/actuator/health" "404" "${body_file}" "${hdr_file}"
+
+  if [[ "${tier}" == "hardened" ]]; then
+    docker exec "${cid}" java -Xms8m -Xmx32m -cp /app/app.jar com.ateng.deploy.HealthCheck
+  fi
+
+  if [[ -n "${mgmt_port}" ]]; then
+    http_get_assert "http://127.0.0.1:${mgmt_port}/actuator/health/readiness" "200" "${body_file}" "${hdr_file}"
+    assert_body_contains "${body_file}" '"status":"UP"' "${label} readiness"
+    http_get_assert "http://127.0.0.1:${mgmt_port}/actuator/prometheus" "200" "${body_file}" "${hdr_file}"
+    assert_body_contains "${body_file}" '# HELP' "${label} prometheus"
+  elif [[ "${tier}" == "production" ]]; then
+    docker exec "${cid}" curl -fsS http://127.0.0.1:8081/actuator/health/readiness >/dev/null
+    docker exec "${cid}" curl -fsS http://127.0.0.1:8081/actuator/prometheus | grep -Fq '# HELP'
+  fi
+
+  assert_spring_boot_no_otlp_errors "${cid}"
+
+  if [[ "${mode}" == "docker" || "${tier}" == "hardened" ]]; then
+    assert_graceful_sigterm_exit "${cid}" 30
+  fi
+}
+
 verify_spring_boot_docker_tier() {
   local tier="$1"
   local image="ghcr.io/atengk/deploy-templates/spring-boot-jar:${tier}"
@@ -311,98 +398,29 @@ verify_spring_boot_docker_tier() {
   local mgmt_port=""
   local body_file="${WORK_TMP}/sb-docker-${tier}.body"
   local hdr_file="${WORK_TMP}/sb-docker-${tier}.hdr"
+  local run_args=(run -d --name "${cname}")
 
   port="$(pick_free_port)"
+  run_args+=(-p "127.0.0.1:${port}:8080")
 
-  case "${tier}" in
-    quickstart)
-      docker run -d --name "${cname}" \
-        -p "127.0.0.1:${port}:8080" \
-        --env-file "${env_file}" \
-        "${image}" >/dev/null
-      ACTIVE_CONTAINERS+=("${cname}")
-
-      wait_http_200 "http://127.0.0.1:${port}/api/info" 60
-      http_get_assert "http://127.0.0.1:${port}/api/info" "200" "${body_file}" "${hdr_file}"
-      assert_body_contains "${body_file}" '"application":"spring-boot-jar-app"' "spring-boot quickstart /api/info"
-      assert_body_contains "${body_file}" '"otlpEnabled":false' "OTLP 默认关闭"
-
-      http_get_assert "http://127.0.0.1:${port}/actuator/health" "200" "${body_file}" "${hdr_file}"
-      assert_body_contains "${body_file}" '"status":"UP"' "spring-boot quickstart /actuator/health"
-      ;;
-    production)
-      mgmt_port="$(pick_free_port)"
-      docker run -d --name "${cname}" \
-        -p "127.0.0.1:${port}:8080" \
-        -p "127.0.0.1:${mgmt_port}:8081" \
-        --memory=512m \
-        --env-file "${env_file}" \
-        "${image}" >/dev/null
-      ACTIVE_CONTAINERS+=("${cname}")
-
-      wait_container_healthy "${cname}" 90
-      local uid=""
-      uid="$(docker exec "${cname}" id -u)"
-      if [[ "${uid}" != "10001" ]]; then
-        log_error "Spring Boot production 非 root UID 校验失败（期望 10001，实际 ${uid}）"
-        return 1
-      fi
-
-      http_get_assert "http://127.0.0.1:${port}/api/info" "200" "${body_file}" "${hdr_file}"
-      assert_body_contains "${body_file}" '"managementPort":8081' "独立管理端口 8081"
-      assert_body_contains "${body_file}" '"otlpEnabled":false' "OTLP 默认关闭"
-
-      http_get_assert "http://127.0.0.1:${port}/actuator/health" "404" "${body_file}" "${hdr_file}"
-      http_get_assert "http://127.0.0.1:${mgmt_port}/actuator/health/readiness" "200" "${body_file}" "${hdr_file}"
-      assert_body_contains "${body_file}" '"status":"UP"' "production readiness"
-      http_get_assert "http://127.0.0.1:${mgmt_port}/actuator/prometheus" "200" "${body_file}" "${hdr_file}"
-      assert_body_contains "${body_file}" '# HELP' "prometheus 指标输出"
-
-      assert_graceful_sigterm_exit "${cname}" 30
-      ;;
-    hardened)
-      mgmt_port="$(pick_free_port)"
-      docker run -d --name "${cname}" \
-        -p "127.0.0.1:${port}:8080" \
-        -p "127.0.0.1:${mgmt_port}:8081" \
-        --memory=512m \
-        --read-only \
-        --tmpfs /tmp:rw,noexec,nosuid,size=64m \
-        --cap-drop=ALL \
-        --security-opt=no-new-privileges:true \
-        --env-file "${env_file}" \
-        "${image}" >/dev/null
-      ACTIVE_CONTAINERS+=("${cname}")
-
-      local inspect_meta=""
-      inspect_meta="$(docker inspect --format 'user={{.Config.User}} ro={{.HostConfig.ReadonlyRootfs}}' "${cname}")"
-      if [[ "${inspect_meta}" != "user=65532:65532 ro=true" ]]; then
-        log_error "Spring Boot hardened 安全配置校验失败：${inspect_meta}"
-        return 1
-      fi
-
-      wait_container_healthy "${cname}" 90
-      docker exec "${cname}" java -Xms8m -Xmx32m -cp /app/app.jar com.ateng.deploy.HealthCheck
-
-      http_get_assert "http://127.0.0.1:${port}/api/info" "200" "${body_file}" "${hdr_file}"
-      assert_body_contains "${body_file}" '"managementPort":8081' "hardened 独立管理端口 8081"
-      assert_body_contains "${body_file}" '"otlpEnabled":false' "hardened OTLP 默认关闭"
-
-      http_get_assert "http://127.0.0.1:${port}/actuator/health" "404" "${body_file}" "${hdr_file}"
-      http_get_assert "http://127.0.0.1:${mgmt_port}/actuator/health/readiness" "200" "${body_file}" "${hdr_file}"
-      assert_body_contains "${body_file}" '"status":"UP"' "hardened readiness"
-      http_get_assert "http://127.0.0.1:${mgmt_port}/actuator/prometheus" "200" "${body_file}" "${hdr_file}"
-      assert_body_contains "${body_file}" '# HELP' "hardened prometheus"
-
-      assert_graceful_sigterm_exit "${cname}" 30
-      ;;
-  esac
-
-  if docker logs "${cname}" 2>&1 | grep -qiE '(Failed to export spans|Connection refused.*431[78])'; then
-    log_error "容器日志检测到意外的 OTLP 连接报错（${cname}）"
-    docker logs --tail 50 "${cname}" >&2 || true
-    return 1
+  if [[ "${tier}" != "quickstart" ]]; then
+    mgmt_port="$(pick_free_port)"
+    run_args+=(-p "127.0.0.1:${mgmt_port}:8081" --memory=512m)
   fi
+  if [[ "${tier}" == "hardened" ]]; then
+    run_args+=(
+      --read-only
+      --tmpfs /tmp:rw,noexec,nosuid,size=64m
+      --cap-drop=ALL
+      --security-opt=no-new-privileges:true
+    )
+  fi
+  run_args+=(--env-file "${env_file}" "${image}")
+
+  docker "${run_args[@]}" >/dev/null
+  ACTIVE_CONTAINERS+=("${cname}")
+
+  verify_spring_boot_running_instance "docker" "${tier}" "${cname}" "${port}" "${mgmt_port}" "${body_file}" "${hdr_file}"
 
   remove_container "${cname}"
   log_pass "Spring Boot 3 Docker 容器契约实测通过 [${tier}]"
@@ -431,47 +449,7 @@ verify_spring_boot_compose_tier() {
   local cid=""
   cid="$(docker compose -p "${proj}" -f "${compose_file}" ps -q app)"
 
-  case "${tier}" in
-    quickstart)
-      wait_http_200 "http://127.0.0.1:${port}/api/info" 60
-      http_get_assert "http://127.0.0.1:${port}/api/info" "200" "${body_file}" "${hdr_file}"
-      assert_body_contains "${body_file}" '"application":"spring-boot-jar-app"' "compose quickstart /api/info"
-      http_get_assert "http://127.0.0.1:${port}/actuator/health" "200" "${body_file}" "${hdr_file}"
-      assert_body_contains "${body_file}" '"status":"UP"' "compose quickstart /actuator/health"
-      ;;
-    production)
-      wait_container_healthy "${cid}" 90
-      local uid=""
-      uid="$(docker compose -p "${proj}" -f "${compose_file}" exec -T app id -u)"
-      if [[ "${uid}" != "10001" ]]; then
-        log_error "Spring Boot Compose production 非 root UID 校验失败（实际 ${uid}）"
-        return 1
-      fi
-      http_get_assert "http://127.0.0.1:${port}/api/info" "200" "${body_file}" "${hdr_file}"
-      http_get_assert "http://127.0.0.1:${port}/actuator/health" "404" "${body_file}" "${hdr_file}"
-      docker compose -p "${proj}" -f "${compose_file}" exec -T app curl -fsS http://127.0.0.1:8081/actuator/health/readiness >/dev/null
-      docker compose -p "${proj}" -f "${compose_file}" exec -T app curl -fsS http://127.0.0.1:8081/actuator/prometheus | grep -Fq '# HELP'
-      ;;
-    hardened)
-      wait_container_healthy "${cid}" 90
-      local inspect_meta=""
-      inspect_meta="$(docker inspect --format 'user={{.Config.User}} ro={{.HostConfig.ReadonlyRootfs}}' "${cid}")"
-      if [[ "${inspect_meta}" != "user=65532:65532 ro=true" ]]; then
-        log_error "Spring Boot Compose hardened 安全配置校验失败：${inspect_meta}"
-        return 1
-      fi
-      http_get_assert "http://127.0.0.1:${port}/api/info" "200" "${body_file}" "${hdr_file}"
-      http_get_assert "http://127.0.0.1:${port}/actuator/health" "404" "${body_file}" "${hdr_file}"
-      docker compose -p "${proj}" -f "${compose_file}" exec -T app java -Xms8m -Xmx32m -cp /app/app.jar com.ateng.deploy.HealthCheck
-      docker compose -p "${proj}" -f "${compose_file}" stop -t 25 >/dev/null
-      local exit_code=""
-      exit_code="$(docker inspect --format '{{.State.ExitCode}}' "${cid}")"
-      if [[ "${exit_code}" != "0" && "${exit_code}" != "143" ]]; then
-        log_error "Spring Boot Compose hardened SIGTERM 退出码异常：${exit_code}"
-        return 1
-      fi
-      ;;
-  esac
+  verify_spring_boot_running_instance "compose" "${tier}" "${cid}" "${port}" "" "${body_file}" "${hdr_file}"
 
   compose_down "${proj}" "${compose_file}"
   log_pass "Spring Boot 3 Compose 编排契约实测通过 [${tier}]"
@@ -513,6 +491,7 @@ verify_vue3_http_endpoints() {
   local expected_api_url="$3"
   local body_file="$4"
   local hdr_file="$5"
+  local expect_omitted_version="${6:-false}"
 
   http_get_assert "${base_url}/healthz" "200" "${body_file}" "${hdr_file}"
   assert_body_contains "${body_file}" "ok" "${tier} /healthz"
@@ -549,6 +528,11 @@ verify_vue3_http_endpoints() {
   assert_header_matches "${hdr_file}" '^Referrer-Policy:' "${tier} Referrer-Policy"
   assert_body_contains "${body_file}" 'window.__APP_CONFIG__' "${tier} /config.js 全局配置对象"
   assert_body_contains "${body_file}" "${expected_api_url}" "${tier} /config.js 动态注入 APP_API_BASE_URL"
+  if [[ "${expect_omitted_version}" == "true" ]] && grep -Fq 'APP_VERSION' "${body_file}"; then
+    log_error "${tier} 未显式传入 APP_VERSION 时，/config.js 不应写入 APP_VERSION 覆盖构建期版本"
+    cat "${body_file}" >&2 || true
+    return 1
+  fi
 
   if [[ "${tier}" == "hardened" ]]; then
     assert_header_matches "${hdr_file}" '^Content-Security-Policy:' "hardened CSP 安全头"
@@ -565,6 +549,36 @@ verify_vue3_http_endpoints() {
   fi
 }
 
+# 统一校验 Vue 3 在 Docker 与 Compose 模式下的运行时安全约束与 HTTP 响应契约
+verify_vue3_running_instance() {
+  local mode="$1"
+  local tier="$2"
+  local cid="$3"
+  local port="$4"
+  local api_url="$5"
+  local body_file="$6"
+  local hdr_file="$7"
+  local expect_omitted_version="$8"
+  local label="Vue 3 ${mode} ${tier}"
+
+  if [[ "${tier}" == "quickstart" ]]; then
+    wait_http_200 "http://127.0.0.1:${port}/healthz" 30
+  else
+    wait_container_healthy "${cid}" 45
+    if [[ "${tier}" == "hardened" ]]; then
+      local probe_path=""
+      if [[ "${mode}" == "docker" ]]; then
+        probe_path="/usr/share/nginx/html/ro-check"
+      fi
+      assert_container_runtime_security "${cid}" "${label}" "101" "" "true" "${probe_path}"
+    else
+      assert_container_runtime_security "${cid}" "${label}" "101" "" "false"
+    fi
+  fi
+
+  verify_vue3_http_endpoints "${tier}" "http://127.0.0.1:${port}" "${api_url}" "${body_file}" "${hdr_file}" "${expect_omitted_version}"
+}
+
 verify_vue3_docker_tier() {
   local tier="$1"
   local image="ghcr.io/atengk/deploy-templates/vue3-pnpm:${tier}"
@@ -573,66 +587,39 @@ verify_vue3_docker_tier() {
   local api_url="https://api-${tier}.ci.example.com/v1"
   local body_file="${WORK_TMP}/vue-docker-${tier}.body"
   local hdr_file="${WORK_TMP}/vue-docker-${tier}.hdr"
+  local run_args=(run -d --name "${cname}")
+  local expect_omitted_version="false"
 
   port="$(pick_free_port)"
 
-  case "${tier}" in
-    quickstart)
-      docker run -d --name "${cname}" \
-        -p "127.0.0.1:${port}:80" \
-        "${image}" >/dev/null
-      ACTIVE_CONTAINERS+=("${cname}")
+  if [[ "${tier}" == "quickstart" ]]; then
+    run_args+=(-p "127.0.0.1:${port}:80")
+  else
+    expect_omitted_version="true"
+    run_args+=(-p "127.0.0.1:${port}:8080")
+    local app_env="staging"
+    if [[ "${tier}" == "hardened" ]]; then
+      app_env="production"
+      run_args+=(
+        --read-only
+        --tmpfs /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777
+        --cap-drop=ALL
+        --security-opt=no-new-privileges:true
+        -e "APP_VERSION="
+      )
+    fi
+    run_args+=(
+      -e "APP_TITLE=Vue3-CI-${tier}"
+      -e "APP_ENV=${app_env}"
+      -e "APP_API_BASE_URL=${api_url}"
+    )
+  fi
+  run_args+=("${image}")
 
-      wait_http_200 "http://127.0.0.1:${port}/healthz" 30
-      verify_vue3_http_endpoints "${tier}" "http://127.0.0.1:${port}" "${api_url}" "${body_file}" "${hdr_file}"
-      ;;
-    production)
-      docker run -d --name "${cname}" \
-        -p "127.0.0.1:${port}:8080" \
-        -e "APP_TITLE=Vue3-CI-${tier}" \
-        -e "APP_ENV=staging" \
-        -e "APP_API_BASE_URL=${api_url}" \
-        "${image}" >/dev/null
-      ACTIVE_CONTAINERS+=("${cname}")
+  docker "${run_args[@]}" >/dev/null
+  ACTIVE_CONTAINERS+=("${cname}")
 
-      wait_container_healthy "${cname}" 45
-      local uid=""
-      uid="$(docker exec "${cname}" id -u)"
-      if [[ "${uid}" != "101" ]]; then
-        log_error "Vue 3 production 非 root UID 校验失败（期望 101，实际 ${uid}）"
-        return 1
-      fi
-      verify_vue3_http_endpoints "${tier}" "http://127.0.0.1:${port}" "${api_url}" "${body_file}" "${hdr_file}"
-      ;;
-    hardened)
-      docker run -d --name "${cname}" \
-        -p "127.0.0.1:${port}:8080" \
-        --read-only \
-        --tmpfs /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777 \
-        --cap-drop=ALL \
-        --security-opt=no-new-privileges:true \
-        -e "APP_TITLE=Vue3-CI-${tier}" \
-        -e "APP_ENV=production" \
-        -e "APP_API_BASE_URL=${api_url}" \
-        "${image}" >/dev/null
-      ACTIVE_CONTAINERS+=("${cname}")
-
-      wait_container_healthy "${cname}" 45
-      local uid=""
-      local ro_flag=""
-      uid="$(docker exec "${cname}" id -u)"
-      ro_flag="$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "${cname}")"
-      if [[ "${uid}" != "101" || "${ro_flag}" != "true" ]]; then
-        log_error "Vue 3 hardened 运行权限或只读根配置校验失败：uid=${uid}, ReadonlyRootfs=${ro_flag}"
-        return 1
-      fi
-      if docker exec "${cname}" touch /usr/share/nginx/html/ro-check 2>/dev/null; then
-        log_error "Vue 3 hardened 静态根目录在 read_only 模式下仍被写入"
-        return 1
-      fi
-      verify_vue3_http_endpoints "${tier}" "http://127.0.0.1:${port}" "${api_url}" "${body_file}" "${hdr_file}"
-      ;;
-  esac
+  verify_vue3_running_instance "docker" "${tier}" "${cname}" "${port}" "${api_url}" "${body_file}" "${hdr_file}" "${expect_omitted_version}"
 
   remove_container "${cname}"
   log_pass "Vue 3 Docker 容器契约实测通过 [${tier}]"
@@ -648,75 +635,52 @@ verify_vue3_compose_tier() {
   local api_url="https://compose-${tier}.ci.example.com/api"
   local body_file="${WORK_TMP}/vue-compose-${tier}.body"
   local hdr_file="${WORK_TMP}/vue-compose-${tier}.hdr"
+  local expect_omitted_version="true"
+  local runtime_app_version="${APP_VERSION:-}"
+
+  if [[ -n "${runtime_app_version}" ]]; then
+    expect_omitted_version="false"
+  fi
 
   port="$(pick_free_port)"
   ACTIVE_COMPOSE_PROJECTS+=("${proj}")
   ACTIVE_COMPOSE_FILES+=("${compose_file}")
 
-  APP_PORT="${port}" APP_VERSION="${APP_VERSION:-1.0.0-ci}" APP_API_BASE_URL="${api_url}" \
+  APP_PORT="${port}" APP_VERSION="${runtime_app_version}" APP_API_BASE_URL="${api_url}" \
     docker compose -p "${proj}" -f "${compose_file}" --env-file "${env_file}" config >/dev/null
 
-  APP_PORT="${port}" APP_VERSION="${APP_VERSION:-1.0.0-ci}" APP_API_BASE_URL="${api_url}" \
+  APP_PORT="${port}" APP_VERSION="${runtime_app_version}" APP_API_BASE_URL="${api_url}" \
     docker compose -p "${proj}" -f "${compose_file}" --env-file "${env_file}" up -d --build
 
   local cid=""
   cid="$(docker compose -p "${proj}" -f "${compose_file}" ps -q app)"
 
-  case "${tier}" in
-    quickstart)
-      wait_http_200 "http://127.0.0.1:${port}/healthz" 30
-      verify_vue3_http_endpoints "${tier}" "http://127.0.0.1:${port}" "${api_url}" "${body_file}" "${hdr_file}"
-      ;;
-    production)
-      wait_container_healthy "${cid}" 45
-      local uid=""
-      uid="$(docker compose -p "${proj}" -f "${compose_file}" exec -T app id -u)"
-      if [[ "${uid}" != "101" ]]; then
-        log_error "Vue 3 Compose production 非 root UID 校验失败（实际 ${uid}）"
-        return 1
-      fi
-      verify_vue3_http_endpoints "${tier}" "http://127.0.0.1:${port}" "${api_url}" "${body_file}" "${hdr_file}"
-      ;;
-    hardened)
-      wait_container_healthy "${cid}" 45
-      local uid=""
-      local ro_flag=""
-      uid="$(docker compose -p "${proj}" -f "${compose_file}" exec -T app id -u)"
-      ro_flag="$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "${cid}")"
-      if [[ "${uid}" != "101" || "${ro_flag}" != "true" ]]; then
-        log_error "Vue 3 Compose hardened 安全约束校验失败：uid=${uid}, ReadonlyRootfs=${ro_flag}"
-        return 1
-      fi
-      verify_vue3_http_endpoints "${tier}" "http://127.0.0.1:${port}" "${api_url}" "${body_file}" "${hdr_file}"
-      ;;
-  esac
+  verify_vue3_running_instance "compose" "${tier}" "${cid}" "${port}" "${api_url}" "${body_file}" "${hdr_file}" "${expect_omitted_version}"
 
   compose_down "${proj}" "${compose_file}"
   log_pass "Vue 3 Compose 编排契约实测通过 [${tier}]"
 }
 
-run_spring_boot_suite() {
+run_stack_suite() {
+  local stack="$1"
   local tier=""
   for tier in quickstart production hardened; do
-    if [[ "${SKIP_DOCKER}" != "true" ]]; then
-      build_spring_boot_image "${tier}"
-      verify_spring_boot_docker_tier "${tier}"
-    fi
-    if [[ "${SKIP_COMPOSE}" != "true" ]]; then
-      verify_spring_boot_compose_tier "${tier}"
-    fi
-  done
-}
-
-run_vue3_suite() {
-  local tier=""
-  for tier in quickstart production hardened; do
-    if [[ "${SKIP_DOCKER}" != "true" ]]; then
-      build_vue3_image "${tier}"
-      verify_vue3_docker_tier "${tier}"
-    fi
-    if [[ "${SKIP_COMPOSE}" != "true" ]]; then
-      verify_vue3_compose_tier "${tier}"
+    if [[ "${stack}" == "spring-boot-jar" ]]; then
+      if [[ "${SKIP_DOCKER}" != "true" ]]; then
+        build_spring_boot_image "${tier}"
+        verify_spring_boot_docker_tier "${tier}"
+      fi
+      if [[ "${SKIP_COMPOSE}" != "true" ]]; then
+        verify_spring_boot_compose_tier "${tier}"
+      fi
+    else
+      if [[ "${SKIP_DOCKER}" != "true" ]]; then
+        build_vue3_image "${tier}"
+        verify_vue3_docker_tier "${tier}"
+      fi
+      if [[ "${SKIP_COMPOSE}" != "true" ]]; then
+        verify_vue3_compose_tier "${tier}"
+      fi
     fi
   done
 }
@@ -727,14 +691,14 @@ main() {
 
   case "${TARGET_STACK}" in
     spring-boot-jar)
-      run_spring_boot_suite
+      run_stack_suite "spring-boot-jar"
       ;;
     vue3-pnpm)
-      run_vue3_suite
+      run_stack_suite "vue3-pnpm"
       ;;
     all)
-      run_spring_boot_suite
-      run_vue3_suite
+      run_stack_suite "spring-boot-jar"
+      run_stack_suite "vue3-pnpm"
       ;;
   esac
 
