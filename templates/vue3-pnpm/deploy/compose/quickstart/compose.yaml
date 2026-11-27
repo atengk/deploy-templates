@@ -1,0 +1,15 @@
+# 快速级（quickstart）Vue 3 SPA Docker Compose 独立副本，面向本地快速构建与静态站点体验
+services:
+  app:
+    image: ghcr.io/atengk/deploy-templates/vue3-pnpm:quickstart
+    build:
+      context: ../../..
+      dockerfile: deploy/docker/quickstart/Dockerfile
+      args:
+        BASE_IMAGE_REGISTRY: ${BASE_IMAGE_REGISTRY:-docker.io}
+        PNPM_REGISTRY: ${PNPM_REGISTRY:-https://registry.npmjs.org}
+        APP_VERSION: ${APP_VERSION:-0.0.0-dev}
+    ports:
+      - "${APP_PORT:-8080}:80"
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}

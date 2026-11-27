@@ -1,0 +1,45 @@
+# 企业加固级（hardened）Vue 3 SPA Docker Compose 独立副本
+# 叠加只读根文件系统、/tmp 临时内存盘、全量移除 Capabilities 与禁止提权策略
+services:
+  app:
+    # 生产上线前建议锁定不可变版本标签（如 :<version>-hardened）或镜像 Digest（@sha256:...）
+    image: ghcr.io/atengk/deploy-templates/vue3-pnpm:hardened
+    build:
+      context: ../../..
+      dockerfile: deploy/docker/hardened/Dockerfile
+      args:
+        BASE_IMAGE_REGISTRY: ${BASE_IMAGE_REGISTRY:-docker.io}
+        PNPM_REGISTRY: ${PNPM_REGISTRY:-https://registry.npmjs.org}
+        APP_VERSION: ${APP_VERSION:-0.0.0-dev}
+    restart: unless-stopped
+    user: "101:101"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      APP_TITLE: "${APP_TITLE:-Vue 3 参考应用（企业加固级）}"
+      APP_VERSION: ${APP_VERSION:-0.0.0-dev}
+      APP_ENV: ${APP_ENV:-production}
+      APP_API_BASE_URL: ${APP_API_BASE_URL:-/api}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    stop_grace_period: 15s
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
