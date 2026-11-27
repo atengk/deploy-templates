@@ -1,0 +1,21 @@
+# 快速级（quickstart）Spring Boot 3 Docker Compose 独立副本，面向本地快速构建与单端口体验
+services:
+  app:
+    image: ghcr.io/atengk/deploy-templates/spring-boot-jar:quickstart
+    build:
+      context: ../../../app
+      dockerfile: ../deploy/docker/quickstart/Dockerfile
+      args:
+        BASE_IMAGE_REGISTRY: ${BASE_IMAGE_REGISTRY:-docker.io}
+        MAVEN_MIRROR_URL: ${MAVEN_MIRROR_URL:-}
+        APP_VERSION: ${APP_VERSION:-0.1.0-SNAPSHOT}
+    ports:
+      - "${APP_PORT:-8080}:${SERVER_PORT:-8080}"
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      SERVER_PORT: ${SERVER_PORT:-8080}
+      APP_NAME: ${APP_NAME:-spring-boot-jar-app}
+      APP_ENV: ${APP_ENV:-quickstart}
+      APP_MESSAGE: "${APP_MESSAGE:-Spring Boot 3 参考应用（快速级）}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      EXTERNAL_API_URL: ${EXTERNAL_API_URL:-}
