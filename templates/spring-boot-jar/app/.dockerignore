@@ -1,0 +1,18 @@
+# 构建上下文忽略规则，避免将本地编译产物、凭据与版本控制元数据传入镜像层
+.git
+.gitignore
+.gitattributes
+.editorconfig
+target/
+*.jar
+*.class
+*.log
+*.tmp
+.env
+.env.*
+!.env.example
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,18 @@
+# 构建上下文忽略规则（独立等级副本）
+.git
+.gitignore
+.gitattributes
+.editorconfig
+target/
+*.jar
+*.class
+*.log
+*.tmp
+.env
+.env.*
+!.env.example
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
