@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 企业加固级（hardened）独立原生清单聚合入口
+# 在生产级基线之上叠加只读根文件系统、/tmp 临时卷挂载、Capabilities 全裁剪、Token 禁用与最小放行 NetworkPolicy
+resources:
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - hpa.yaml
+  - pdb.yaml
+  - networkpolicy.yaml
+
+# 镜像坐标一行覆盖入口（重要安全提醒）：
+# 上线受控集群前，必须将下方 newTag 锁定为具体的不可变版本标签（例如 1.0.0-hardened）
+# 或直接启用 digest（sha256:...）锁定精确镜像摘要，禁止在企业加固环境中长期依赖浮动标签 :hardened
+images:
+  - name: ghcr.io/atengk/deploy-templates/vue3-pnpm
+    newName: ghcr.io/atengk/deploy-templates/vue3-pnpm
+    newTag: hardened
+    # digest: sha256:0000000000000000000000000000000000000000000000000000000000000000

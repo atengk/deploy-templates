@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 快速级（quickstart）独立原生清单聚合入口，仅负责 Vue 3 单应用部署
+resources:
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+
+# 镜像坐标一行覆盖入口：默认指向 GHCR 快速级镜像
+# 迁移至自有仓库时，仅需修改下方 newName / newTag（或启用 digest 字段）
+images:
+  - name: ghcr.io/atengk/deploy-templates/vue3-pnpm
+    newName: ghcr.io/atengk/deploy-templates/vue3-pnpm
+    newTag: quickstart
+    # digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
