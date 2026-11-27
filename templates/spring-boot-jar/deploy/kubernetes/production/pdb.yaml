@@ -1,0 +1,15 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: spring-boot-jar
+  labels:
+    app.kubernetes.io/name: spring-boot-jar
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: spring-boot-jar
+spec:
+  # 保障节点维护或自愿驱逐期间至少保留 1 个可用后端副本
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spring-boot-jar
+      app.kubernetes.io/component: backend

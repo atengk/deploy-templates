@@ -1,0 +1,26 @@
+# 可选 Prometheus Operator 指标采集参考清单（默认未纳入 hardened/kustomization.yaml）
+# 设计原因：避免未安装 Prometheus Operator CRD（monitoring.coreos.com/v1）的裸集群在执行
+#           kubectl apply -k 或 kubeconform -strict 时发生资源类型未知报错。
+# 启用步骤：
+#   1. 在同目录 service.yaml 中取消 management（8081）端口注释（或配置专用内网管理 Service，切勿将其加入 Ingress）；
+#   2. 确认集群已安装 Prometheus Operator CRD 且监控命名空间匹配 NetworkPolicy 放行规则（默认 monitoring）；
+#   3. 执行 kubectl apply -f templates/spring-boot-jar/deploy/kubernetes/hardened/servicemonitor.yaml，
+#      或将其手动加入 hardened/kustomization.yaml 的 resources 列表。
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: spring-boot-jar
+  labels:
+    app.kubernetes.io/name: spring-boot-jar
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: spring-boot-jar
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spring-boot-jar
+      app.kubernetes.io/component: backend
+  endpoints:
+    - port: management
+      path: /actuator/prometheus
+      interval: 30s
+      scrapeTimeout: 10s

@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: spring-boot-jar
+  labels:
+    app.kubernetes.io/name: spring-boot-jar
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: spring-boot-jar
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: spring-boot-jar
+    app.kubernetes.io/component: backend
+  ports:
+    # 仅向集群内部和 Ingress 暴露业务端口 8080
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

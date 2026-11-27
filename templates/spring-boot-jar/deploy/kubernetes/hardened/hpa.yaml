@@ -1,0 +1,26 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: spring-boot-jar
+  labels:
+    app.kubernetes.io/name: spring-boot-jar
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: spring-boot-jar
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: spring-boot-jar
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+  behavior:
+    scaleDown:
+      # 缩容稳定窗口防止短时流量波动引发抖动扩缩
+      stabilizationWindowSeconds: 300

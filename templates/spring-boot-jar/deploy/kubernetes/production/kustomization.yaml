@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 生产级（production）独立原生清单聚合入口，包含独立管理端口、三探针、资源限额与弹性/可用性治理
+resources:
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - hpa.yaml
+  - pdb.yaml
+
+# 镜像坐标一行覆盖入口：默认指向 GHCR 生产级镜像
+# 部署至自有集群时，建议将 newTag 替换为具体的发布版本号或不可变 digest
+images:
+  - name: ghcr.io/atengk/deploy-templates/spring-boot-jar
+    newName: ghcr.io/atengk/deploy-templates/spring-boot-jar
+    newTag: production
+    # digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
