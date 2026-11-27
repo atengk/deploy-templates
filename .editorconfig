@@ -1,0 +1,34 @@
+# 统一跨平台编辑器基础格式规范
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Java、Kotlin 与 Python 源码采用 4 空格缩进
+[*.{java,kt,py}]
+indent_size = 4
+
+# Maven POM 与 Properties 配置采用 4 空格缩进
+[*.{xml,properties}]
+indent_size = 4
+
+# YAML、JSON、前端与 Shell 脚本采用 2 空格缩进
+[*.{yml,yaml,json,ts,mts,cts,js,mjs,cjs,vue,html,css,scss,sh,bash}]
+indent_size = 2
+
+# 容器构建定义、Nginx 与 systemd 配置
+[{Dockerfile,Dockerfile.*,*.dockerfile,*.conf,*.service,*.timer,*.socket}]
+indent_size = 2
+
+# Markdown 保留行尾双空格硬换行
+[*.md]
+trim_trailing_whitespace = false
+
+# Makefile 必须使用 Tab 缩进
+[Makefile]
+indent_style = tab

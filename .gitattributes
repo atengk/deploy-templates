@@ -1,0 +1,75 @@
+# 跨平台统一行尾配置，确保所有文本与面向 Linux 的构建/运维文件在任意操作系统下均保持 LF 行尾
+* text=auto eol=lf
+
+# Shell 脚本与 Linux 宿主机服务配置
+*.sh text eol=lf
+*.bash text eol=lf
+*.service text eol=lf
+*.timer text eol=lf
+*.socket text eol=lf
+*.conf text eol=lf
+*.env text eol=lf
+*.env.example text eol=lf
+
+# 容器构建定义
+Dockerfile text eol=lf
+Dockerfile.* text eol=lf
+*.dockerfile text eol=lf
+.dockerignore text eol=lf
+
+# 配置与数据交换格式
+*.yml text eol=lf
+*.yaml text eol=lf
+*.properties text eol=lf
+*.xml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+
+# 源代码与前端静态资源
+*.java text eol=lf
+*.kt text eol=lf
+*.ts text eol=lf
+*.mts text eol=lf
+*.cts text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.vue text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.scss text eol=lf
+*.svg text eol=lf
+*.py text eol=lf
+
+# 文档与工程元文件
+*.md text eol=lf
+*.txt text eol=lf
+*.sha256 text eol=lf
+LICENSE text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+.editorconfig text eol=lf
+Makefile text eol=lf
+
+# 二进制文件禁止换行符转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.jar binary
+*.war binary
+*.ear binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.tgz binary
+*.bz2 binary
+*.xz binary
+*.pdf binary
