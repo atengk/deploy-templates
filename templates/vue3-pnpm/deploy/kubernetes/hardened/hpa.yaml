@@ -1,0 +1,26 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: vue3-pnpm
+  labels:
+    app.kubernetes.io/name: vue3-pnpm
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: vue3-pnpm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: vue3-pnpm
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+  behavior:
+    scaleDown:
+      # 缩容稳定窗口防止流量短时波动引发抖动扩缩
+      stabilizationWindowSeconds: 300

@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vue3-pnpm
+  labels:
+    app.kubernetes.io/name: vue3-pnpm
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: vue3-pnpm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vue3-pnpm
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vue3-pnpm
+        app.kubernetes.io/component: frontend
+        app.kubernetes.io/part-of: vue3-pnpm
+    spec:
+      containers:
+        - name: vue3-pnpm
+          image: ghcr.io/atengk/deploy-templates/vue3-pnpm:quickstart
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          env:
+            - name: TZ
+              value: "Asia/Shanghai"
+          # 基础就绪检查：验证快速级容器 Nginx 静态服务与 /healthz 端点可用
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3

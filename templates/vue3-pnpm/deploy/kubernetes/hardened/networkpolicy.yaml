@@ -1,0 +1,39 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vue3-pnpm
+  labels:
+    app.kubernetes.io/name: vue3-pnpm
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: vue3-pnpm
+spec:
+  # 精准作用于 vue3-pnpm Pod，既对本应用实施默认拒绝策略，又避免误伤同命名空间其他应用
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vue3-pnpm
+      app.kubernetes.io/component: frontend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # 仅放行 Ingress Controller 所在命名空间访问非特权容器端口 8080
+    # 若集群将 ingress-nginx 安装在其他命名空间，请对应调整下方命名空间标签
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # 纯静态站点默认不主动外连业务后端，仅最小放行集群内部 DNS 解析（53/UDP、53/TCP）
+    # 如确认全生命周期零域名解析需求，可移除此 egress 规则实现全量出站默认拒绝
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

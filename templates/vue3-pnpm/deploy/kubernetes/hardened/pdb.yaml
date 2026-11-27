@@ -1,0 +1,15 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vue3-pnpm
+  labels:
+    app.kubernetes.io/name: vue3-pnpm
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: vue3-pnpm
+spec:
+  # 保障节点维护或自愿驱逐期间至少保留 1 个可用前端副本
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vue3-pnpm
+      app.kubernetes.io/component: frontend

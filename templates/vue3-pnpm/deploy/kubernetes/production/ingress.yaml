@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vue3-pnpm
+  labels:
+    app.kubernetes.io/name: vue3-pnpm
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: vue3-pnpm
+spec:
+  ingressClassName: nginx
+  # 启用 HTTPS 时取消下方 tls 注释并配置对应 TLS 证书 Secret
+  # tls:
+  #   - hosts:
+  #       - vue3.example.com
+  #     secretName: vue3-pnpm-tls
+  rules:
+    - host: vue3.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: vue3-pnpm
+                port:
+                  name: http
