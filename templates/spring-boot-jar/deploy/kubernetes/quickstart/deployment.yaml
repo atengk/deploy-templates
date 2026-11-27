@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spring-boot-jar
+  labels:
+    app.kubernetes.io/name: spring-boot-jar
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: spring-boot-jar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spring-boot-jar
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spring-boot-jar
+        app.kubernetes.io/component: backend
+        app.kubernetes.io/part-of: spring-boot-jar
+    spec:
+      containers:
+        - name: spring-boot-jar
+          image: ghcr.io/atengk/deploy-templates/spring-boot-jar:quickstart
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: TZ
+              value: "Asia/Shanghai"
+            - name: SERVER_PORT
+              value: "8080"
+            - name: APP_ENV
+              value: "quickstart"
+          # 基础就绪检查：验证快速级单端口 8080 下 Actuator 健康端点可用
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6

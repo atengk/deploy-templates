@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: spring-boot-jar
+  labels:
+    app.kubernetes.io/name: spring-boot-jar
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: spring-boot-jar
+spec:
+  ingressClassName: nginx
+  # 启用 HTTPS 时取消下方 tls 注释并配置对应 TLS 证书 Secret
+  # tls:
+  #   - hosts:
+  #       - spring-boot.example.com
+  #     secretName: spring-boot-jar-tls
+  rules:
+    - host: spring-boot.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: spring-boot-jar
+                port:
+                  number: 8080

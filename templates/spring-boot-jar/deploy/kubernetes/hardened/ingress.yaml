@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: spring-boot-jar
+  labels:
+    app.kubernetes.io/name: spring-boot-jar
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: spring-boot-jar
+  # 线上配置 TLS 后，可取消下方注解强制 HTTP 跳转 HTTPS
+  # annotations:
+  #   nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  # 企业加固级生产接入建议取消下方 tls 注释并配置受管 TLS 证书 Secret
+  # tls:
+  #   - hosts:
+  #       - spring-boot.example.com
+  #     secretName: spring-boot-jar-tls
+  rules:
+    - host: spring-boot.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: spring-boot-jar
+                port:
+                  number: 8080
