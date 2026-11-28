@@ -154,7 +154,7 @@ jobs:
 
       - name: 安装 Trivy CLI（用于生成 hardened 镜像 SBOM）
         if: matrix.tier == 'hardened'
-        uses: aquasecurity/setup-trivy@v0.2.3
+        uses: aquasecurity/setup-trivy@v0.3.1
 
       - name: 为 hardened 镜像生成 SPDX JSON 格式 SBOM
         if: matrix.tier == 'hardened'

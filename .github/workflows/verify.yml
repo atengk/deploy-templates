@@ -101,7 +101,7 @@ jobs:
         run: bash scripts/verify-containers.sh --stack spring-boot-jar
 
       - name: 安装 Trivy CLI
-        uses: aquasecurity/setup-trivy@v0.2.3
+        uses: aquasecurity/setup-trivy@v0.3.1
 
       - name: Trivy 镜像安全扫描（输出 HIGH/CRITICAL 全表并阻断可修复 CRITICAL）
         run: |
@@ -166,7 +166,7 @@ jobs:
         run: bash scripts/verify-containers.sh --stack vue3-pnpm
 
       - name: 安装 Trivy CLI
-        uses: aquasecurity/setup-trivy@v0.2.3
+        uses: aquasecurity/setup-trivy@v0.3.1
 
       - name: Trivy 镜像安全扫描（输出 HIGH/CRITICAL 全表并阻断可修复 CRITICAL）
         run: |
@@ -281,7 +281,7 @@ jobs:
           kubeconform -v
 
       - name: 安装 Trivy CLI
-        uses: aquasecurity/setup-trivy@v0.2.3
+        uses: aquasecurity/setup-trivy@v0.3.1
 
       - name: 运行 Kubernetes 全量 Kustomize + kubeconform -strict + trivy config 门禁
         env:
