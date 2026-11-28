@@ -113,6 +113,8 @@ check_crlf() {
     return 0
   fi
 
+  # awk 中的 $0 为 awk 字段变量，刻意使用单引号避免 Shell 展开
+  # shellcheck disable=SC2016
   hits="$(
     tr '\n' '\0' < "${list_file}" | xargs -0 awk '
       index($0, "\r") > 0 {
@@ -232,7 +234,7 @@ check_markdown_paths_and_links() {
     bad=$((bad + 1))
   fi
 
-  if py_cmd="$(detect_python)"; then
+  if py_cmd="$(detect_python sys)"; then
     local link_output=""
     if ! link_output="$(
       REPO_ROOT="${REPO_ROOT}" MD_LIST_FILE="${md_list_file}" "${py_cmd}" - <<'PYEOF' 2>&1

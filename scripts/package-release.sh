@@ -117,7 +117,7 @@ copy_systemd_tier_files() {
           cp -f "${file}" "${dst_tier}/${base}"
           chmod 0755 "${dst_tier}/${base}"
           ;;
-        *.service|*.conf|*.env.example|.env.example|*.md)
+        *.service|*.conf|*.env.example|*.md)
           cp -f "${file}" "${dst_tier}/${base}"
           chmod 0644 "${dst_tier}/${base}"
           ;;

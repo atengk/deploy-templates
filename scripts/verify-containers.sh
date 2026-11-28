@@ -410,7 +410,7 @@ verify_spring_boot_docker_tier() {
   if [[ "${tier}" == "hardened" ]]; then
     run_args+=(
       --read-only
-      --tmpfs /tmp:rw,noexec,nosuid,size=64m
+      --tmpfs "/tmp:rw,noexec,nosuid,size=64m"
       --cap-drop=ALL
       --security-opt=no-new-privileges:true
     )
@@ -602,7 +602,7 @@ verify_vue3_docker_tier() {
       app_env="production"
       run_args+=(
         --read-only
-        --tmpfs /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777
+        --tmpfs "/tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777"
         --cap-drop=ALL
         --security-opt=no-new-privileges:true
         -e "APP_VERSION="

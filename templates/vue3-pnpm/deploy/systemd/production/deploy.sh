@@ -80,7 +80,10 @@ load_env_file() {
 validate_version() {
   local ver="$1"
   [ -n "$ver" ] || { log_error "发布版本号不能为空"; return 1; }
-  [ "$ver" != "." ] && [ "$ver" != ".." ] || { log_error "非法版本号: ${ver}"; return 1; }
+  if [ "$ver" = "." ] || [ "$ver" = ".." ]; then
+    log_error "非法版本号: ${ver}"
+    return 1
+  fi
   [[ "$ver" =~ ^[A-Za-z0-9._+-]+$ ]] || {
     log_error "非法版本号 '${ver}'：仅允许字母、数字、点、下划线、加号与连字符"
     return 1

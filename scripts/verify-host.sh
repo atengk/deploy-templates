@@ -220,13 +220,13 @@ assert_vue3_config_js() {
         const cfg = sandbox.window.__APP_CONFIG__;
         if (!cfg || typeof cfg !== "object") throw new Error("missing __APP_CONFIG__");
         if (cfg.APP_VERSION !== process.env.EXPECTED_VERSION) {
-          throw new Error(`APP_VERSION mismatch: ${cfg.APP_VERSION}`);
+          throw new Error("APP_VERSION mismatch: " + cfg.APP_VERSION);
         }
         if (cfg.APP_API_BASE_URL !== process.env.EXPECTED_API_URL) {
-          throw new Error(`APP_API_BASE_URL mismatch: ${cfg.APP_API_BASE_URL}`);
+          throw new Error("APP_API_BASE_URL mismatch: " + cfg.APP_API_BASE_URL);
         }
         if (cfg.APP_TITLE !== process.env.EXPECTED_TITLE) {
-          throw new Error(`APP_TITLE mismatch: ${cfg.APP_TITLE}`);
+          throw new Error("APP_TITLE mismatch: " + cfg.APP_TITLE);
         }
       '
   fi
