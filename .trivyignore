@@ -3,3 +3,6 @@
 CVE-2026-47884
 # CVE-2026-47890（Spring MVC 服务端渲染 SSE Fragment）：当前示例应用仅通过 @RestController 提供 JSON 接口
 CVE-2026-47890
+# gcr.io/distroless/java21-debian12:nonroot 无 shell 与包管理器，无法在下游执行 apt 升级，需待上游镜像重建纳入 libbrotli1 1.0.9-2+deb12u1
+# CVE-2026-111497（libbrotli1 解码器越界写）：本 Spring Boot REST 参考应用不直接解码外部不可信 Brotli 原生流
+CVE-2026-111497

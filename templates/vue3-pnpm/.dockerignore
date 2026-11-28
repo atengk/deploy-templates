@@ -1,0 +1,24 @@
+# Vue 3 构建上下文忽略规则（供 templates/vue3-pnpm 根目录构建、Compose 与发版流水线共用；各 deploy/docker/<tier>/.dockerignore 仍保留独立副本）
+# 依赖与构建缓存
+**/node_modules
+**/dist
+**/dist-ssr
+**/.pnpm-store
+**/.vite
+**/*.tsbuildinfo
+**/coverage
+
+# 本地环境变量与密钥文件
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+
+# 版本控制、文档与无关载体配置
+.git
+.gitignore
+**/*.md
+deploy/compose
+deploy/systemd
+deploy/kubernetes

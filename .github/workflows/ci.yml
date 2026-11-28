@@ -46,6 +46,7 @@ jobs:
               - '.github/workflows/ci.yml'
               - '.github/workflows/verify.yml'
               - '.github/workflows/release.yml'
+              - '.trivyignore'
             vue3:
               - 'templates/vue3-pnpm/**'
               - '!templates/vue3-pnpm/**/*.md'
@@ -56,6 +57,7 @@ jobs:
               - '.github/workflows/ci.yml'
               - '.github/workflows/verify.yml'
               - '.github/workflows/release.yml'
+              - '.trivyignore'
             release_dryrun:
               - 'templates/spring-boot-jar/**'
               - '!templates/spring-boot-jar/**/*.md'
