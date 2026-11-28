@@ -22,6 +22,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <app.version>0.1.0-SNAPSHOT</app.version>
+        <tomcat.version>10.1.60</tomcat.version>
     </properties>
 
     <dependencies>

@@ -110,7 +110,7 @@ jobs:
             echo "::group::Trivy 漏洞扫描报告（HIGH,CRITICAL） - ${image}"
             trivy image --severity HIGH,CRITICAL "${image}" || true
             echo "::endgroup::"
-            trivy image --ignore-unfixed --severity CRITICAL --exit-code 1 "${image}"
+            trivy image --ignorefile .trivyignore --ignore-unfixed --severity CRITICAL --exit-code 1 "${image}"
           done
 
   vue3-gate:
@@ -134,13 +134,15 @@ jobs:
           cache: pnpm
           cache-dependency-path: templates/vue3-pnpm/app/pnpm-lock.yaml
 
-      - name: 安装依赖并运行 Vue 3 参考应用测试与构建
-        env:
-          VITE_APP_VERSION: ${{ inputs.vue_app_version || inputs.app_version }}
+      - name: 安装依赖并运行 Vue 3 参考应用单元测试
         run: |
           pnpm --dir templates/vue3-pnpm/app install --frozen-lockfile
           pnpm --dir templates/vue3-pnpm/app test
-          pnpm --dir templates/vue3-pnpm/app build
+
+      - name: 构建 Vue 3 参考应用静态产物
+        env:
+          VITE_APP_VERSION: ${{ inputs.vue_app_version || inputs.app_version }}
+        run: pnpm --dir templates/vue3-pnpm/app build
 
       - name: 配置 Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -175,7 +177,7 @@ jobs:
             echo "::group::Trivy 漏洞扫描报告（HIGH,CRITICAL） - ${image}"
             trivy image --severity HIGH,CRITICAL "${image}" || true
             echo "::endgroup::"
-            trivy image --ignore-unfixed --severity CRITICAL --exit-code 1 "${image}"
+            trivy image --ignorefile .trivyignore --ignore-unfixed --severity CRITICAL --exit-code 1 "${image}"
           done
 
   host-gate:

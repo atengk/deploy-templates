@@ -5,18 +5,23 @@
  * @since 2026-11-27
  */
 import { mount } from '@vue/test-utils';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
 import App from '../App.vue';
 import { createAppRouter } from '../router';
 
 describe('App', () => {
   afterEach(() => {
+    vi.unstubAllEnvs();
     delete window.__APP_CONFIG__;
     document.title = '';
   });
 
   it('未注入运行时配置时展示默认标题、版本号与回退状态', async () => {
+    vi.stubEnv('VITE_APP_TITLE', '');
+    vi.stubEnv('VITE_APP_VERSION', '');
+    vi.stubEnv('VITE_APP_ENV', '');
+    vi.stubEnv('VITE_API_BASE_URL', '');
     const router = createAppRouter(createMemoryHistory());
     await router.push('/');
     await router.isReady();

@@ -1,0 +1,5 @@
+# Spring Boot 3.5.16 对应的 Spring Framework 6.2.19 为当前 Maven Central 开源最新终版（官方 6.2.20 未发布至开源仓库）
+# CVE-2026-47884（Spring MVC XsltView 实体注入）：当前示例 REST 应用未使用 XsltView
+CVE-2026-47884
+# CVE-2026-47890（Spring MVC 服务端渲染 SSE Fragment）：当前示例应用仅通过 @RestController 提供 JSON 接口
+CVE-2026-47890
