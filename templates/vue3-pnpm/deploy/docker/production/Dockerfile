@@ -30,7 +30,7 @@ COPY app/ ./
 RUN pnpm build
 
 # 阶段 2：使用非特权 Nginx 镜像（UID 101，监听 8080）并支持运行时配置注入
-FROM ${BASE_IMAGE_REGISTRY}/nginx/nginx-unprivileged:1.28-alpine
+FROM ${BASE_IMAGE_REGISTRY}/nginx/nginx-unprivileged:1.30-alpine
 
 USER root
 

@@ -34,7 +34,7 @@
 
 | 能力维度 | `quickstart`（快速级） | `production`（生产级） | `hardened`（企业加固级） |
 | :--- | :--- | :--- | :--- |
-| **基础镜像与构建优化** | 标准构建与基础运行时镜像（Temurin 21 JRE / 官方 Nginx 1.28） | BuildKit 缓存挂载、Spring Boot 分层解包 / pnpm `--frozen-lockfile` 严格锁定 | 后端无 shell `distroless/java21-debian12:nonroot`；前端 `nginx/nginx-unprivileged:1.28-alpine` 静态产物只读 |
+| **基础镜像与构建优化** | 标准构建与基础运行时镜像（Temurin 21 JRE / 官方 Nginx 1.30） | BuildKit 缓存挂载、Spring Boot 分层解包 / pnpm `--frozen-lockfile` 严格锁定 | 后端无 shell `distroless/java21-debian12:nonroot`；前端 `nginx/nginx-unprivileged:1.30-alpine` 静态产物只读 |
 | **运行权限与系统沙箱** | 默认运行用户与可写文件系统 | 专用低权非 root UID（后端 `10001`，前端 `101`）；`systemd` 低权系统用户与 `MemoryMax` | 容器 `read_only` + `/tmp` `tmpfs`、`cap_drop: ALL`、`no-new-privileges`；`systemd` 全套 `ProtectSystem=strict` 与能力清零 |
 | **端口隔离与流量策略** | 单端口暴露（后端 `8080`、前端 Nginx `80`） | 后端管理端口拆至 `8081` 且反代屏蔽 `/actuator`；前端监听 `8080`、`assets/` 一年不可变缓存 | 后端宿主机绑定 `127.0.0.1`、K8s 默认拒绝加最小放行 `NetworkPolicy`；前端严格 CSP 与非只读 HTTP 方法 `405` 拦截 |
 | **健康探针与生命周期** | 基础存活/就绪检查或单脚本探测 | `startup`/`readiness`/`liveness` 三探针、`SIGTERM` 优雅停机（20s 宽限 + 30s 缓冲区）、HPA 与 PDB | 无 shell 内置零依赖 JDK 探针 `com.ateng.deploy.HealthCheck`、宿主机失败自动回滚与历史版本治理 |

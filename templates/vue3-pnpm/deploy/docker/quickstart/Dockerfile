@@ -28,7 +28,7 @@ COPY app/ ./
 RUN pnpm build
 
 # 阶段 2：使用官方 Nginx 托管纯静态 SPA 构建产物
-FROM ${BASE_IMAGE_REGISTRY}/library/nginx:1.28-alpine
+FROM ${BASE_IMAGE_REGISTRY}/library/nginx:1.30-alpine
 
 ENV TZ=Asia/Shanghai
 

@@ -32,7 +32,7 @@ deploy/docker/
 | :--- | :--- | :--- | :--- |
 | **依赖安装与缓存** | `pnpm install` 基础安装 | `pnpm install --frozen-lockfile` + BuildKit Store 缓存挂载 | `pnpm install --frozen-lockfile` + BuildKit Store 缓存挂载 |
 | **多架构构建加速** | 构建主机原生架构编译（`--platform=$BUILDPLATFORM`） | 构建主机原生架构编译（`--platform=$BUILDPLATFORM`） | 构建主机原生架构编译（`--platform=$BUILDPLATFORM`） |
-| **运行时基础镜像** | `nginx:1.28-alpine` | `nginx/nginx-unprivileged:1.28-alpine` | `nginx/nginx-unprivileged:1.28-alpine` |
+| **运行时基础镜像** | `nginx:1.30-alpine` | `nginx/nginx-unprivileged:1.30-alpine` | `nginx/nginx-unprivileged:1.30-alpine` |
 | **运行用户与端口** | 默认用户，监听 `80` | 非 root UID `101`，监听非特权端口 `8080` | 非 root UID `101`，监听非特权端口 `8080`，静态资源仅只读权限 |
 | **一次构建，运行时注入** | 回退构建期环境变量 | 入口脚本安全转义环境变量写入 `/tmp/app-runtime/config.js` | 入口脚本安全转义写入 `/tmp/app-runtime/config.js`，并绕开 `/docker-entrypoint.d/` |
 | **缓存治理与路由** | SPA History 回退 + `/healthz` | `assets/` 一年不可变缓存、`index.html` 与 `/config.js` 严格 `no-store` | `assets/` 一年不可变缓存、`index.html` 与 `/config.js` 严格 `no-store` |

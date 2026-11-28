@@ -30,7 +30,7 @@ COPY app/ ./
 RUN pnpm build
 
 # 阶段 2：基于非特权 Nginx 构建兼容只读根文件系统与零特权裁剪的企业加固级镜像
-FROM ${BASE_IMAGE_REGISTRY}/nginx/nginx-unprivileged:1.28-alpine
+FROM ${BASE_IMAGE_REGISTRY}/nginx/nginx-unprivileged:1.30-alpine
 
 USER root
 
